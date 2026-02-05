@@ -11,12 +11,13 @@ const program = new Command();
 program
   .name('apivet')
   .description('API Security Scanner - Static and runtime analysis for API security posture')
-  .version('0.3.2');
+  .version('0.6.0');
 
 program
   .command('scan <path>')
   .description('Scan OpenAPI/Swagger specification files')
   .option('-j, --json', 'Output as JSON')
+  .option('--sarif', 'Output as SARIF (for GitHub Code Scanning)')
   .option('-s, --severity <level>', 'Filter by severity (critical, high, medium, low, info)')
   .option('-r, --recursive', 'Scan directories recursively')
   .option('-o, --output <file>', 'Write results to file')
@@ -41,7 +42,7 @@ program
 program
   .command('inventory <path>')
   .description('Discover and catalog API endpoints from source code')
-  .option('--framework <name>', 'Target framework: express, fastify, koa, hono, auto (default: auto)')
+  .option('--framework <name>', 'Target framework: express, fastify, koa, hono, nestjs, hapi, restify, auto (default: auto)')
   .option('-j, --json', 'Output as JSON')
   .option('-o, --output <file>', 'Write results to file')
   .option('--ignore <patterns>', 'Additional glob patterns to ignore (comma-separated)')

@@ -9,6 +9,7 @@
  * - gcp.ts: GCP Cloud Endpoints, Cloud Run, Firebase, API Gateway (APIVET031, 041-042, 066-075)
  * - platforms.ts: CDN, PaaS, and other platforms (APIVET043-047, 050-055)
  * - general.ts: General cloud security rules (APIVET032-033, 035)
+ * - graphql.ts: GraphQL-specific security rules (APIVET076-083)
  */
 
 import type { OpenApiSpec, Finding } from '../types.js';
@@ -20,6 +21,7 @@ import { azureRules } from './azure.js';
 import { gcpRules } from './gcp.js';
 import { platformRules } from './platforms.js';
 import { generalRules } from './general.js';
+import { graphqlRules } from './graphql.js';
 
 // Re-export types
 export type { Rule } from './utils.js';
@@ -29,10 +31,11 @@ export const rules: Rule[] = [
   ...owaspRules,      // APIVET001-015
   ...authRules,       // APIVET016-025
   ...awsRules,        // APIVET026-029, 034, 036-038, 048-049
-  ...azureRules,      // APIVET030, 039-040
-  ...gcpRules,        // APIVET031, 041-042
+  ...azureRules,      // APIVET030, 039-040, 056-065
+  ...gcpRules,        // APIVET031, 041-042, 066-075
   ...generalRules,    // APIVET032-033, 035
-  ...platformRules    // APIVET043-047, 050-055
+  ...platformRules,   // APIVET043-047, 050-055
+  ...graphqlRules     // APIVET076-083
 ];
 
 /**
@@ -62,3 +65,4 @@ export { azureRules } from './azure.js';
 export { gcpRules } from './gcp.js';
 export { platformRules } from './platforms.js';
 export { generalRules } from './general.js';
+export { graphqlRules } from './graphql.js';

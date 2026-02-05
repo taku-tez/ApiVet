@@ -81,6 +81,94 @@ router.post('/koa/items', async (ctx) => { ctx.body = { ok: true }; });
 module.exports = router;
 `
   );
+
+  // NestJS routes
+  fs.writeFileSync(
+    path.join(TEST_DIR, 'nest-controller.ts'),
+    `
+import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+  @Get()
+  findAll() {
+    return [];
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return { id };
+  }
+
+  @Post()
+  create(@Body() data: any) {
+    return { created: true };
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return { deleted: true };
+  }
+}
+`
+  );
+
+  // Hapi routes
+  fs.writeFileSync(
+    path.join(TEST_DIR, 'hapi-routes.js'),
+    `
+const Hapi = require('@hapi/hapi');
+const server = Hapi.server({ port: 3000 });
+
+server.route({
+  method: 'GET',
+  path: '/hapi/health',
+  handler: () => ({ status: 'ok' })
+});
+
+server.route({
+  path: '/hapi/users',
+  method: 'POST',
+  handler: (request) => request.payload
+});
+
+server.route([
+  {
+    method: 'GET',
+    path: '/hapi/items',
+    handler: () => []
+  }
+]);
+
+module.exports = server;
+`
+  );
+
+  // Restify routes
+  fs.writeFileSync(
+    path.join(TEST_DIR, 'restify-routes.js'),
+    `
+const restify = require('restify');
+const server = restify.createServer();
+
+server.get('/restify/health', (req, res, next) => {
+  res.send('OK');
+  return next();
+});
+
+server.post('/restify/users', (req, res, next) => {
+  res.send(req.body);
+  return next();
+});
+
+server.del('/restify/users/:id', (req, res, next) => {
+  res.send({ deleted: true });
+  return next();
+});
+
+module.exports = server;
+`
+  );
 });
 
 afterAll(() => {
@@ -131,6 +219,42 @@ describe('Inventory', () => {
       
       expect(endpoints.length).toBeGreaterThanOrEqual(2);
       expect(endpoints.some(e => e.method === 'GET' && e.path === '/koa/items')).toBe(true);
+    });
+
+    it('should discover NestJS routes', async () => {
+      const endpoints = await discoverEndpoints(
+        path.join(TEST_DIR, 'nest-controller.ts'),
+        { framework: 'nestjs' }
+      );
+      
+      expect(endpoints.length).toBeGreaterThanOrEqual(4);
+      expect(endpoints.some(e => e.method === 'GET' && e.path === '/')).toBe(true);  // @Get()
+      expect(endpoints.some(e => e.method === 'GET' && e.path === ':id')).toBe(true);  // @Get(':id')
+      expect(endpoints.some(e => e.method === 'POST' && e.path === '/')).toBe(true);  // @Post()
+      expect(endpoints.some(e => e.method === 'DELETE' && e.path === ':id')).toBe(true);  // @Delete(':id')
+    });
+
+    it('should discover Hapi routes', async () => {
+      const endpoints = await discoverEndpoints(
+        path.join(TEST_DIR, 'hapi-routes.js'),
+        { framework: 'hapi' }
+      );
+      
+      expect(endpoints.length).toBeGreaterThanOrEqual(2);
+      expect(endpoints.some(e => e.method === 'GET' && e.path === '/hapi/health')).toBe(true);
+      expect(endpoints.some(e => e.method === 'POST' && e.path === '/hapi/users')).toBe(true);
+    });
+
+    it('should discover Restify routes', async () => {
+      const endpoints = await discoverEndpoints(
+        path.join(TEST_DIR, 'restify-routes.js'),
+        { framework: 'restify' }
+      );
+      
+      expect(endpoints.length).toBeGreaterThanOrEqual(3);
+      expect(endpoints.some(e => e.method === 'GET' && e.path === '/restify/health')).toBe(true);
+      expect(endpoints.some(e => e.method === 'POST' && e.path === '/restify/users')).toBe(true);
+      expect(endpoints.some(e => e.method === 'DELETE' && e.path === '/restify/users/:id')).toBe(true);
     });
 
     it('should auto-detect framework', async () => {

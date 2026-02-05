@@ -2243,9 +2243,206 @@ describe('ApiVet Rules', () => {
     });
   });
 
+  // ============================================
+  // GraphQL Security Rules (APIVET076-083)
+  // ============================================
+
+  describe('APIVET076 - GraphQL Introspection', () => {
+    it('should detect GraphQL endpoint for introspection', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/graphql': {
+            post: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET076');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag non-GraphQL endpoints', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET076');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET077 - GraphQL Query Depth', () => {
+    it('should detect GraphQL without depth limiting', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/gql': {
+            post: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET077');
+      expect(finding).toBeDefined();
+    });
+  });
+
+  describe('APIVET078 - GraphQL Query Complexity', () => {
+    it('should detect GraphQL without complexity analysis', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/graphql': {
+            post: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET078');
+      expect(finding).toBeDefined();
+    });
+  });
+
+  describe('APIVET080 - GraphQL Authentication', () => {
+    it('should detect GraphQL without auth', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/graphql': {
+            post: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET080');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should not flag when security is defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        security: [{ bearerAuth: [] }],
+        components: {
+          securitySchemes: {
+            bearerAuth: { type: 'http', scheme: 'bearer' }
+          }
+        },
+        paths: {
+          '/graphql': {
+            post: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET080');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET082 - GraphQL over HTTP', () => {
+    it('should detect GraphQL over HTTP', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'http://api.example.com' }],
+        paths: {
+          '/graphql': {
+            post: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET082');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should allow localhost HTTP', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'http://localhost:4000' }],
+        paths: {
+          '/graphql': {
+            post: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET082');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET083 - GraphQL Rate Limiting', () => {
+    it('should detect GraphQL without rate limiting', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/graphql': {
+            post: {
+              responses: {
+                '200': { description: 'OK' }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET083');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when 429 response exists', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/graphql': {
+            post: {
+              responses: {
+                '200': { description: 'OK' },
+                '429': { description: 'Rate Limited' }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET083');
+      expect(finding).toBeUndefined();
+    });
+  });
+
   describe('Rule count', () => {
-    it('should have at least 75 rules', () => {
-      expect(rules.length).toBeGreaterThanOrEqual(75);
+    it('should have at least 83 rules', () => {
+      expect(rules.length).toBeGreaterThanOrEqual(83);
     });
   });
 });

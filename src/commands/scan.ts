@@ -1,10 +1,12 @@
 import * as fs from 'node:fs';
 import { scanOpenApiSpec, type ScanResult } from '../scanner/index.js';
 import { formatScanResults, formatScanResultsJson } from '../formatter.js';
+import { formatSarif } from '../sarif.js';
 import type { Severity } from '../types.js';
 
 interface ScanCommandOptions {
   json?: boolean;
+  sarif?: boolean;
   severity?: string;
   recursive?: boolean;
   output?: string;
@@ -17,7 +19,7 @@ export async function scanCommand(
   targetPath: string,
   options: ScanCommandOptions
 ): Promise<void> {
-  const { json, severity, recursive, output, ignore, onlyRules, excludeRules } = options;
+  const { json, sarif, severity, recursive, output, ignore, onlyRules, excludeRules } = options;
   
   // Validate path exists
   if (!fs.existsSync(targetPath)) {
@@ -63,9 +65,16 @@ export async function scanCommand(
     }
     
     // Format output
-    const formattedOutput = json 
-      ? formatScanResultsJson(results)
-      : formatScanResults(results);
+    let formattedOutput: string;
+    if (sarif) {
+      // Collect all findings for SARIF output
+      const allFindings = results.flatMap(r => r.findings);
+      formattedOutput = formatSarif(allFindings);
+    } else if (json) {
+      formattedOutput = formatScanResultsJson(results);
+    } else {
+      formattedOutput = formatScanResults(results);
+    }
     
     // Write to file or stdout
     if (output) {

@@ -1,0 +1,113 @@
+openapi: '3.0.0'
+info:
+  title: GraphQL API Example
+  version: '1.0.0'
+  description: Example GraphQL API - demonstrates GraphQL-specific security considerations
+
+servers:
+  - url: https://api.example.com
+    description: Production
+
+paths:
+  /graphql:
+    post:
+      summary: GraphQL endpoint
+      operationId: graphqlQuery
+      # No security defined - triggers APIVET080
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/GraphQLQuery'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/GraphQLQuery'
+      responses:
+        '200':
+          description: GraphQL response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLResponse'
+
+    get:
+      summary: GraphQL playground (development)
+      operationId: graphqlPlayground
+      responses:
+        '200':
+          description: GraphQL playground HTML
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /graphql/schema:
+    get:
+      summary: GraphQL schema (introspection alternative)
+      operationId: getSchema
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Schema SDL
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    GraphQLQuery:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: GraphQL query or mutation
+        variables:
+          type: object
+          description: Query variables
+        operationName:
+          type: string
+          description: Name of the operation to execute
+
+    GraphQLResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          description: Query result data
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQLError'
+
+    GraphQLError:
+      type: object
+      properties:
+        message:
+          type: string
+        locations:
+          type: array
+          items:
+            type: object
+            properties:
+              line:
+                type: integer
+              column:
+                type: integer
+        path:
+          type: array
+          items:
+            type: string
+        extensions:
+          type: object

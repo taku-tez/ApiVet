@@ -12,7 +12,7 @@ export interface Endpoint {
 }
 
 export interface DiscoveryOptions {
-  framework?: 'express' | 'fastify' | 'koa' | 'hono' | 'auto';
+  framework?: 'express' | 'fastify' | 'koa' | 'hono' | 'nestjs' | 'hapi' | 'restify' | 'auto';
   extraIgnore?: string[];
 }
 
@@ -81,6 +81,62 @@ const FRAMEWORKS: FrameworkPattern[] = [
     methodExtractor: (match) => {
       if (match[1] && match[2]) {
         return { method: match[1].toUpperCase(), path: match[2] };
+      }
+      return null;
+    }
+  },
+  {
+    name: 'nestjs',
+    routePatterns: [
+      // @Get('/path'), @Post('/path'), etc. - with path argument
+      /@(Get|Post|Put|Delete|Patch|Options|Head|All)\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/gi,
+      // @Get(), @Post(), etc. - without path (uses controller prefix only)
+      /@(Get|Post|Put|Delete|Patch|Options|Head|All)\s*\(\s*\)/gi
+    ],
+    methodExtractor: (match) => {
+      if (match[1]) {
+        // Path is optional - if not provided, use '/' as placeholder
+        const path = match[2] || '/';
+        return { method: match[1].toUpperCase(), path };
+      }
+      return null;
+    }
+  },
+  {
+    name: 'hapi',
+    routePatterns: [
+      // server.route({ method: 'GET', path: '/path' })
+      /\.route\s*\(\s*\{[^}]*method\s*:\s*['"`](\w+)['"`][^}]*path\s*:\s*['"`]([^'"`]+)['"`]/gi,
+      // server.route({ path: '/path', method: 'GET' }) - reversed order
+      /\.route\s*\(\s*\{[^}]*path\s*:\s*['"`]([^'"`]+)['"`][^}]*method\s*:\s*['"`](\w+)['"`]/gi
+    ],
+    methodExtractor: (match) => {
+      if (match[1] && match[2]) {
+        // Handle both order possibilities
+        const first = match[1];
+        const second = match[2];
+        // If first looks like a path (starts with /), it's the reversed pattern
+        if (first.startsWith('/')) {
+          return { method: second.toUpperCase(), path: first };
+        }
+        return { method: first.toUpperCase(), path: second };
+      }
+      return null;
+    }
+  },
+  {
+    name: 'restify',
+    routePatterns: [
+      // server.get('/path', handler), server.post('/path', handler), etc.
+      /(?:server|restify)\.(get|post|put|del|patch|opts|head)\s*\(\s*['"`]([^'"`]+)['"`]/gi
+    ],
+    methodExtractor: (match) => {
+      if (match[1] && match[2]) {
+        // Restify uses 'del' for DELETE and 'opts' for OPTIONS
+        let method = match[1].toUpperCase();
+        if (method === 'DEL') method = 'DELETE';
+        if (method === 'OPTS') method = 'OPTIONS';
+        return { method, path: match[2] };
       }
       return null;
     }
@@ -328,6 +384,29 @@ function detectFramework(rawContent: string): FrameworkPattern[] {
 
   if (isRealImport(/require\s*\(\s*['"`]hono['"`]\s*\)|from\s+['"`]hono['"`]/gi)) {
     const framework = FRAMEWORKS.find(f => f.name === 'hono');
+    if (framework) detected.push(framework);
+  }
+
+  // NestJS - check for @nestjs/common decorators
+  if (isRealImport(/from\s+['"`]@nestjs\/common['"`]/gi) || 
+      isRealImport(/require\s*\(\s*['"`]@nestjs\/common['"`]\s*\)/gi)) {
+    const framework = FRAMEWORKS.find(f => f.name === 'nestjs');
+    if (framework) detected.push(framework);
+  }
+
+  // Hapi - check for @hapi/hapi or hapi
+  if (isRealImport(/from\s+['"`]@hapi\/hapi['"`]/gi) ||
+      isRealImport(/require\s*\(\s*['"`]@hapi\/hapi['"`]\s*\)/gi) ||
+      isRealImport(/from\s+['"`]hapi['"`]/gi) ||
+      isRealImport(/require\s*\(\s*['"`]hapi['"`]\s*\)/gi)) {
+    const framework = FRAMEWORKS.find(f => f.name === 'hapi');
+    if (framework) detected.push(framework);
+  }
+
+  // Restify
+  if (isRealImport(/from\s+['"`]restify['"`]/gi) ||
+      isRealImport(/require\s*\(\s*['"`]restify['"`]\s*\)/gi)) {
+    const framework = FRAMEWORKS.find(f => f.name === 'restify');
     if (framework) detected.push(framework);
   }
 

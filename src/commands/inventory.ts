@@ -22,7 +22,7 @@ export async function inventoryCommand(
   }
   
   // Validate framework
-  const validFrameworks = ['express', 'fastify', 'koa', 'hono', 'auto'];
+  const validFrameworks = ['express', 'fastify', 'koa', 'hono', 'nestjs', 'hapi', 'restify', 'auto'];
   if (framework && !validFrameworks.includes(framework)) {
     console.error(`Error: Invalid framework. Must be one of: ${validFrameworks.join(', ')}`);
     process.exit(2);
@@ -33,7 +33,7 @@ export async function inventoryCommand(
   
   try {
     const endpoints = await discoverEndpoints(targetPath, {
-      framework: framework as 'express' | 'fastify' | 'koa' | 'hono' | 'auto' | undefined,
+      framework: framework as 'express' | 'fastify' | 'koa' | 'hono' | 'nestjs' | 'hapi' | 'restify' | 'auto' | undefined,
       extraIgnore
     });
     
