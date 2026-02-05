@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('apivet')
   .description('API Security Scanner - Static and runtime analysis for API security posture')
-  .version('0.2.3');
+  .version('0.2.4');
 
 program
   .command('scan <path>')

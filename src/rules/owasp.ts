@@ -16,7 +16,9 @@ import {
   isLocalhostUrl,
   createFinding,
   getJsonSchemasFromContent,
-  collectSchemaProperties
+  collectSchemaProperties,
+  getResponseHeaderNames,
+  hasJsonContentWithoutSchema
 } from './utils.js';
 
 export const owaspRules: Rule[] = [
@@ -196,11 +198,10 @@ export const owaspRules: Rule[] = [
           if (!responses) continue;
 
           for (const response of Object.values(responses)) {
-            if (response.headers) {
-              const headerNames = Object.keys(response.headers).map(h => h.toLowerCase());
-              if (headerNames.some(h => h.includes('ratelimit') || h.includes('rate-limit') || h.includes('retry-after'))) {
-                hasRateLimit = true;
-              }
+            // FB4: Use helper to resolve $ref in headers
+            const headerNames = getResponseHeaderNames(response, spec);
+            if (headerNames.some(h => h.includes('ratelimit') || h.includes('rate-limit') || h.includes('retry-after'))) {
+              hasRateLimit = true;
             }
           }
         }
@@ -397,23 +398,22 @@ export const owaspRules: Rule[] = [
         if (!pathItem.options?.responses) continue;
 
         for (const response of Object.values(pathItem.options.responses)) {
-          if (response.headers) {
-            const headerNames = Object.keys(response.headers).map(h => h.toLowerCase());
-            if (headerNames.includes('access-control-allow-origin')) {
-              findings.push(createFinding(
-                'APIVET010',
-                'CORS configuration detected - verify not overly permissive',
-                `OPTIONS ${path} includes CORS headers. Ensure not set to "*" for sensitive endpoints.`,
-                'info',
-                {
-                  owaspCategory: 'API8:2023',
-                  filePath,
-                  endpoint: path,
-                  method: 'OPTIONS',
-                  remediation: 'Restrict Access-Control-Allow-Origin to specific trusted domains.'
-                }
-              ));
-            }
+          // FB4: Use helper to resolve $ref in headers
+          const headerNames = getResponseHeaderNames(response, spec);
+          if (headerNames.includes('access-control-allow-origin')) {
+            findings.push(createFinding(
+              'APIVET010',
+              'CORS configuration detected - verify not overly permissive',
+              `OPTIONS ${path} includes CORS headers. Ensure not set to "*" for sensitive endpoints.`,
+              'info',
+              {
+                owaspCategory: 'API8:2023',
+                filePath,
+                endpoint: path,
+                method: 'OPTIONS',
+                remediation: 'Restrict Access-Control-Allow-Origin to specific trusted domains.'
+              }
+            ));
           }
         }
       }
@@ -551,8 +551,8 @@ export const owaspRules: Rule[] = [
           const operation = pathItem[method];
           if (!operation?.requestBody) continue;
 
-          const content = operation.requestBody.content?.['application/json'];
-          if (content && !content.schema) {
+          // FB3: Check all JSON-compatible content types, resolve $ref
+          if (hasJsonContentWithoutSchema(operation.requestBody, spec)) {
             findings.push(createFinding(
               'APIVET014',
               'Request body without schema definition',

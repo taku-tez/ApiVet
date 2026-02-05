@@ -257,3 +257,79 @@ export function collectSchemaProperties(
   
   return properties;
 }
+
+/**
+ * Get header names from a response, resolving $ref if needed
+ * FB4: Handles direct headers and $ref to components.headers
+ */
+export function getResponseHeaderNames(
+  response: { headers?: Record<string, unknown>; $ref?: string },
+  spec: OpenApiSpec
+): string[] {
+  let resolvedResponse = response;
+  
+  // Resolve response $ref if present
+  if (response.$ref && typeof response.$ref === 'string') {
+    const resolved = resolveRef(response.$ref, spec);
+    if (resolved && typeof resolved === 'object') {
+      resolvedResponse = resolved as typeof response;
+    }
+  }
+  
+  if (!resolvedResponse.headers) return [];
+  
+  const headerNames: string[] = [];
+  
+  for (const [name, header] of Object.entries(resolvedResponse.headers)) {
+    // Check if header itself is a $ref
+    if (header && typeof header === 'object' && '$ref' in header) {
+      const headerRef = (header as { $ref: string }).$ref;
+      // Extract header name from ref if it's to components/headers
+      if (headerRef.startsWith('#/components/headers/')) {
+        headerNames.push(name.toLowerCase());
+      } else {
+        // Resolve and check if it has a name or schema
+        const resolved = resolveRef(headerRef, spec);
+        if (resolved) {
+          headerNames.push(name.toLowerCase());
+        }
+      }
+    } else {
+      headerNames.push(name.toLowerCase());
+    }
+  }
+  
+  return headerNames;
+}
+
+/**
+ * Check if a request body has any JSON content without schema
+ * FB3: Handles application/json, application/*+json, etc.
+ * Also resolves $ref in requestBody
+ */
+export function hasJsonContentWithoutSchema(
+  requestBody: { content?: Record<string, { schema?: unknown }>; $ref?: string } | undefined,
+  spec: OpenApiSpec
+): boolean {
+  if (!requestBody) return false;
+  
+  let resolvedBody = requestBody;
+  
+  // Resolve requestBody $ref if present
+  if (requestBody.$ref && typeof requestBody.$ref === 'string') {
+    const resolved = resolveRef(requestBody.$ref, spec);
+    if (resolved && typeof resolved === 'object') {
+      resolvedBody = resolved as typeof requestBody;
+    }
+  }
+  
+  if (!resolvedBody.content) return false;
+  
+  for (const [contentType, mediaType] of Object.entries(resolvedBody.content)) {
+    if (isJsonContentType(contentType) && !mediaType.schema) {
+      return true;
+    }
+  }
+  
+  return false;
+}

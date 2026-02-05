@@ -251,6 +251,56 @@ describe('ApiVet Rules', () => {
       expect(sensitiveFindings.some(f => f.title.includes('api_key'))).toBe(true);
     });
 
+    // FB5: $ref resolution with allOf/oneOf
+    it('should detect sensitive properties via allOf', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          schemas: {
+            BaseUser: {
+              type: 'object',
+              properties: {
+                id: { type: 'integer' }
+              }
+            },
+            UserCredentials: {
+              type: 'object',
+              properties: {
+                password: { type: 'string' }
+              }
+            }
+          }
+        },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        allOf: [
+                          { $ref: '#/components/schemas/BaseUser' },
+                          { $ref: '#/components/schemas/UserCredentials' }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const sensitiveFindings = findings.filter(f => f.ruleId === 'APIVET004');
+      
+      expect(sensitiveFindings.some(f => f.title.includes('password'))).toBe(true);
+    });
+
     it('should detect sensitive properties in application/vnd.api+json', () => {
       const spec: OpenApiSpec = {
         openapi: '3.0.0',
@@ -282,6 +332,91 @@ describe('ApiVet Rules', () => {
       const sensitiveFindings = findings.filter(f => f.ruleId === 'APIVET004');
       
       expect(sensitiveFindings.some(f => f.title.includes('credit_card'))).toBe(true);
+    });
+  });
+
+  describe('APIVET005 - Rate Limiting', () => {
+    it('should detect missing rate limit headers', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': { description: 'OK' }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const rateLimitFinding = findings.find(f => f.ruleId === 'APIVET005');
+      
+      expect(rateLimitFinding).toBeDefined();
+    });
+
+    it('should not flag when rate limit headers are defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  headers: {
+                    'X-RateLimit-Limit': { schema: { type: 'integer' } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const rateLimitFinding = findings.find(f => f.ruleId === 'APIVET005');
+      
+      expect(rateLimitFinding).toBeUndefined();
+    });
+
+    // FB4: $ref resolution for headers
+    it('should detect rate limit headers via $ref', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          headers: {
+            RateLimitHeader: {
+              schema: { type: 'integer' },
+              description: 'Rate limit'
+            }
+          }
+        },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  headers: {
+                    'X-RateLimit-Limit': { $ref: '#/components/headers/RateLimitHeader' }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const rateLimitFinding = findings.find(f => f.ruleId === 'APIVET005');
+      
+      // Should NOT flag because rate limit header is defined (via $ref)
+      expect(rateLimitFinding).toBeUndefined();
     });
   });
 

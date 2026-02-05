@@ -89,38 +89,27 @@ const FRAMEWORKS: FrameworkPattern[] = [
 /**
  * Remove comments from source code to prevent false positives
  * Handles single-line (//) and multi-line (/* *\/) comments
- * FB2: Also handles multi-line template literals (backtick strings)
+ * Also handles multi-line template literals (backtick strings)
+ * FB2: Preserves newlines when stripping comments to maintain accurate line numbers
  * Preserves strings but marks their position for later filtering
  */
 function stripComments(content: string): { stripped: string; lineMap: number[]; stringRanges: Array<{start: number; end: number}> } {
   const stringRanges: Array<{start: number; end: number}> = [];
   let result = '';
   let i = 0;
-  let lineNumber = 1;
-  const lineMap: number[] = [];
-  let currentLineStart = 0;
+  let originalLine = 1;
   
-  // Track line numbers for the stripped content
-  const updateLineMap = () => {
-    const newLines = result.substring(currentLineStart).split('\n').length - 1;
-    for (let n = 0; n < newLines; n++) {
-      lineMap.push(lineNumber);
-    }
-    currentLineStart = result.length;
-  };
+  // Track mapping: for each character position in result, what original line is it from
+  const posToOriginalLine: number[] = [];
 
   while (i < content.length) {
-    // Track original line numbers
-    if (content[i] === '\n') {
-      lineNumber++;
-    }
-
     // Check for single-line comment
     if (content[i] === '/' && content[i + 1] === '/') {
-      // Skip until end of line
+      // Skip until end of line, but preserve the newline
       while (i < content.length && content[i] !== '\n') {
         i++;
       }
+      // Don't skip the newline - let it be processed normally
       continue;
     }
 
@@ -128,7 +117,12 @@ function stripComments(content: string): { stripped: string; lineMap: number[]; 
     if (content[i] === '/' && content[i + 1] === '*') {
       i += 2;
       while (i < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
-        if (content[i] === '\n') lineNumber++;
+        // FB2: Preserve newlines inside multi-line comments for accurate line tracking
+        if (content[i] === '\n') {
+          posToOriginalLine.push(originalLine);
+          result += '\n';
+          originalLine++;
+        }
         i++;
       }
       i += 2; // Skip */
@@ -139,23 +133,37 @@ function stripComments(content: string): { stripped: string; lineMap: number[]; 
     if (content[i] === '"' || content[i] === "'" || content[i] === '`') {
       const quote = content[i];
       const stringStart = result.length;
+      posToOriginalLine.push(originalLine);
       result += content[i];
       i++;
 
-      // FB2: Handle multi-line template literals properly
+      // Handle multi-line template literals properly
       while (i < content.length) {
         if (content[i] === '\\' && i + 1 < content.length) {
           // Escape sequence
-          result += content[i] + content[i + 1];
-          if (content[i + 1] === '\n') lineNumber++;
-          i += 2;
+          posToOriginalLine.push(originalLine);
+          result += content[i];
+          i++;
+          if (content[i] === '\n') {
+            originalLine++;
+          }
+          posToOriginalLine.push(originalLine);
+          result += content[i];
+          i++;
         } else if (content[i] === quote) {
+          posToOriginalLine.push(originalLine);
           result += content[i];
           i++;
           break;
         } else {
-          if (content[i] === '\n') lineNumber++;
-          result += content[i];
+          if (content[i] === '\n') {
+            posToOriginalLine.push(originalLine);
+            result += content[i];
+            originalLine++;
+          } else {
+            posToOriginalLine.push(originalLine);
+            result += content[i];
+          }
           i++;
         }
       }
@@ -165,23 +173,31 @@ function stripComments(content: string): { stripped: string; lineMap: number[]; 
       continue;
     }
 
-    result += content[i];
+    // Regular character
+    if (content[i] === '\n') {
+      posToOriginalLine.push(originalLine);
+      result += content[i];
+      originalLine++;
+    } else {
+      posToOriginalLine.push(originalLine);
+      result += content[i];
+    }
     i++;
   }
 
-  // Build line map from stripped content
+  // Build line map: for each line in stripped content, what's the original line number
   const strippedLines = result.split('\n');
-  const finalLineMap: number[] = [];
-  let origLine = 1;
-  for (let idx = 0; idx < strippedLines.length; idx++) {
-    finalLineMap.push(origLine);
-    // Count newlines in original content to estimate line mapping
-    origLine++;
+  const lineMap: number[] = [];
+  let pos = 0;
+  for (let lineIdx = 0; lineIdx < strippedLines.length; lineIdx++) {
+    // Get original line number at the start of this stripped line
+    lineMap.push(posToOriginalLine[pos] || lineIdx + 1);
+    pos += strippedLines[lineIdx].length + 1; // +1 for newline
   }
 
   return {
     stripped: result,
-    lineMap: finalLineMap,
+    lineMap,
     stringRanges
   };
 }
@@ -320,7 +336,8 @@ function detectFramework(rawContent: string): FrameworkPattern[] {
 
 /**
  * Helper to scan a single file with caching of content
- * FB4: Avoids reading file twice by passing content to both detectFramework and scanFile
+ * Avoids reading file twice by passing content to both detectFramework and scanFile
+ * FB1: When framework is undefined or 'auto', auto-detect from content
  */
 async function scanFileWithDetection(
   filePath: string,
@@ -329,11 +346,13 @@ async function scanFileWithDetection(
 ): Promise<Endpoint[]> {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    const detectedFrameworks = framework === 'auto' ? detectFramework(content) : defaultFrameworks;
+    // FB1: Auto-detect when framework is undefined or 'auto'
+    const shouldAutoDetect = !framework || framework === 'auto';
+    const detectedFrameworks = shouldAutoDetect ? detectFramework(content) : defaultFrameworks;
     // Pass content to scanFile to avoid re-reading
     return await scanFile(filePath, detectedFrameworks, content);
   } catch {
-    // FB5: Skip files that can't be read
+    // Skip files that can't be read
     return [];
   }
 }
