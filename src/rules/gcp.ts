@@ -3,7 +3,7 @@
  * APIVET031, APIVET041-042, APIVET066-075
  */
 
-import type { Finding } from '../types.js';
+import type { Finding, OpenApiSpec } from '../types.js';
 import {
   Rule,
   HTTP_METHODS,

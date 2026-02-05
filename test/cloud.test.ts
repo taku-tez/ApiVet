@@ -44,6 +44,8 @@ vi.mock('@google-cloud/api-gateway', () => ({
 const mockAzureApiList = vi.fn();
 const mockAzureServiceList = vi.fn();
 const mockAzureApiExportGet = vi.fn();
+const mockAzureGlobalPolicyGet = vi.fn();
+const mockAzureApiPolicyGet = vi.fn();
 
 vi.mock('@azure/arm-apimanagement', () => ({
   ApiManagementClient: vi.fn().mockImplementation(() => ({
@@ -55,6 +57,12 @@ vi.mock('@azure/arm-apimanagement', () => ({
     },
     apiManagementService: {
       list: mockAzureServiceList,
+    },
+    policy: {
+      get: mockAzureGlobalPolicyGet,
+    },
+    apiPolicy: {
+      get: mockAzureApiPolicyGet,
     },
   })),
 }));
@@ -333,6 +341,9 @@ describe('GCP API Gateway Discovery', () => {
 describe('Azure APIM Discovery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: no policies (most tests don't need them)
+    mockAzureGlobalPolicyGet.mockRejectedValue(new Error('Not found'));
+    mockAzureApiPolicyGet.mockRejectedValue(new Error('Not found'));
   });
 
   it('should discover Azure APIM APIs with exported spec', async () => {
@@ -435,5 +446,135 @@ describe('Azure APIM Discovery', () => {
     delete process.env.AZURE_SUBSCRIPTION_ID;
 
     await expect(discoverAzureApis({})).rejects.toThrow('Azure subscription ID not provided');
+  });
+
+  it('should fetch and parse APIM policies', async () => {
+    const apis = [{
+      name: 'secure-api',
+      displayName: 'Secure API',
+      path: 'secure',
+      serviceUrl: 'https://backend.com',
+      isCurrent: true,
+      protocols: ['https'],
+    }];
+    mockAzureApiList.mockReturnValue((async function* () {
+      for (const api of apis) yield api;
+    })());
+
+    const exportedSpec = {
+      openapi: '3.0.3',
+      info: { title: 'Secure API', version: '1.0.0' },
+      paths: { '/data': { get: { responses: { '200': { description: 'OK' } } } } },
+    };
+    mockAzureApiExportGet.mockResolvedValue({
+      value: { link: 'https://storage.blob.core.windows.net/export/spec.json' }
+    });
+
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => exportedSpec,
+    } as Response);
+
+    // Mock global policy with validate-jwt and rate limiting
+    mockAzureGlobalPolicyGet.mockResolvedValue({
+      value: `<policies>
+        <inbound>
+          <validate-jwt header-name="Authorization">
+            <audiences><audience>api://my-app</audience></audiences>
+            <issuers><issuer>https://sts.windows.net/tenant/</issuer></issuers>
+          </validate-jwt>
+          <rate-limit calls="100" renewal-period="60" />
+        </inbound>
+      </policies>`
+    });
+
+    // Mock API policy with CORS
+    mockAzureApiPolicyGet.mockResolvedValue({
+      value: `<policies>
+        <inbound>
+          <cors>
+            <allowed-origins>
+              <origin>https://portal.example.com</origin>
+            </allowed-origins>
+          </cors>
+        </inbound>
+      </policies>`
+    });
+
+    const result = await discoverAzureApis({
+      subscriptionId: 'sub-123',
+      resourceGroup: 'my-rg',
+      serviceName: 'my-apim',
+    });
+
+    expect(result).toHaveLength(1);
+
+    // Check global policy was parsed
+    expect(result[0].globalPolicy).toBeDefined();
+    expect(result[0].globalPolicy?.hasValidateJwt).toBe(true);
+    expect(result[0].globalPolicy?.hasRateLimit).toBe(true);
+    expect(result[0].globalPolicy?.jwtValidation?.hasAudiences).toBe(true);
+    expect(result[0].globalPolicy?.jwtValidation?.hasIssuers).toBe(true);
+    expect(result[0].globalPolicy?.rateLimitConfig?.callsPerPeriod).toBe(100);
+
+    // Check API policy was parsed
+    expect(result[0].apiPolicy).toBeDefined();
+    expect(result[0].apiPolicy?.hasCors).toBe(true);
+    expect(result[0].apiPolicy?.corsAllowAll).toBe(false);
+    expect(result[0].apiPolicy?.corsConfig?.allowedOrigins).toEqual(['https://portal.example.com']);
+
+    // Check policy metadata embedded in spec
+    const policyMeta = (result[0].spec as Record<string, unknown>)['x-azure-apim-policies'] as Record<string, unknown>;
+    expect(policyMeta).toBeDefined();
+    expect(policyMeta.global).toBeDefined();
+    expect(policyMeta.api).toBeDefined();
+
+    mockFetch.mockRestore();
+  });
+
+  it('should handle missing policies gracefully', async () => {
+    const apis = [{
+      name: 'basic-api',
+      displayName: 'Basic API',
+      path: 'basic',
+      isCurrent: true,
+      protocols: ['https'],
+    }];
+    mockAzureApiList.mockReturnValue((async function* () {
+      for (const api of apis) yield api;
+    })());
+
+    mockAzureApiExportGet.mockResolvedValue({
+      value: { link: 'https://storage.blob.core.windows.net/export/spec.json' }
+    });
+
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        openapi: '3.0.3',
+        info: { title: 'Basic', version: '1.0.0' },
+        paths: {},
+      }),
+    } as Response);
+
+    // Both policies fail (not found)
+    mockAzureGlobalPolicyGet.mockRejectedValue(new Error('Not found'));
+    mockAzureApiPolicyGet.mockRejectedValue(new Error('Not found'));
+
+    const result = await discoverAzureApis({
+      subscriptionId: 'sub-123',
+      resourceGroup: 'my-rg',
+      serviceName: 'my-apim',
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].globalPolicy).toBeUndefined();
+    expect(result[0].apiPolicy).toBeUndefined();
+
+    // No policy metadata in spec
+    const policyMeta = (result[0].spec as Record<string, unknown>)['x-azure-apim-policies'];
+    expect(policyMeta).toBeUndefined();
+
+    mockFetch.mockRestore();
   });
 });

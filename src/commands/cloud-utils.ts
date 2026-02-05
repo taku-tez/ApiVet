@@ -183,6 +183,27 @@ export function formatCloudResults(
     if (api.serviceUrl) lines.push(`   Backend: ${api.serviceUrl}`);
     
     lines.push(`   Paths: ${Object.keys(api.spec.paths || {}).length}`);
+
+    // Show policy status for Azure APIM
+    const policyData = (api.spec as Record<string, unknown>)['x-azure-apim-policies'] as Record<string, unknown> | undefined;
+    if (policyData) {
+      const policyItems: string[] = [];
+      const globalP = policyData.global as Record<string, unknown> | undefined;
+      const apiP = policyData.api as Record<string, unknown> | undefined;
+      const hasJwt = globalP?.hasValidateJwt || apiP?.hasValidateJwt;
+      const hasRate = globalP?.hasRateLimit || apiP?.hasRateLimit;
+      const hasIp = globalP?.hasIpFilter || apiP?.hasIpFilter;
+      const hasCors = globalP?.hasCors || apiP?.hasCors;
+      if (hasJwt) policyItems.push('JWT✓');
+      if (hasRate) policyItems.push('RateLimit✓');
+      if (hasIp) policyItems.push('IPFilter✓');
+      if (hasCors) policyItems.push('CORS✓');
+      if (policyItems.length > 0) {
+        lines.push(`   📋 Policies: ${policyItems.join(', ')}`);
+      } else {
+        lines.push(`   📋 Policies: (no security policies detected)`);
+      }
+    }
     lines.push('');
 
     if (result.findings.length === 0) {

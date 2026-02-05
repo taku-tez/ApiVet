@@ -2796,9 +2796,296 @@ describe('ApiVet Rules', () => {
     });
   });
 
+  // ============================================
+  // Azure APIM Policy-Based Rules (APIVET090-098)
+  // ============================================
+
+  describe('APIVET090 - Azure APIM missing validate-jwt policy', () => {
+    const azureApimSpec = (policies: Record<string, unknown>): OpenApiSpec => ({
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0.0' },
+      servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+      paths: { '/users': { get: { responses: { '200': { description: 'OK' } } } } },
+      'x-azure-apim-policies': policies,
+    } as unknown as OpenApiSpec);
+
+    it('should detect missing validate-jwt', () => {
+      const spec = azureApimSpec({
+        global: { hasValidateJwt: false, hasRateLimit: false, hasIpFilter: false, hasCors: false },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET090');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should not flag when validate-jwt exists at global level', () => {
+      const spec = azureApimSpec({
+        global: { hasValidateJwt: true },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET090');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when validate-jwt exists at API level', () => {
+      const spec = azureApimSpec({
+        api: { hasValidateJwt: true },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET090');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET091 - validate-jwt missing audience/issuer', () => {
+    const azureApimSpec = (policies: Record<string, unknown>): OpenApiSpec => ({
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0.0' },
+      servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+      paths: { '/data': { get: { responses: { '200': { description: 'OK' } } } } },
+      'x-azure-apim-policies': policies,
+    } as unknown as OpenApiSpec);
+
+    it('should detect missing audience in JWT validation', () => {
+      const spec = azureApimSpec({
+        global: {
+          hasValidateJwt: true,
+          jwtValidation: { hasRequiredClaims: false, hasAudiences: false, hasIssuers: true, hasOpenIdConfig: true },
+        },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const audienceFindings = findings.filter(f => f.ruleId === 'APIVET091' && f.title.includes('audience'));
+      expect(audienceFindings.length).toBeGreaterThan(0);
+    });
+
+    it('should detect missing issuer in JWT validation', () => {
+      const spec = azureApimSpec({
+        api: {
+          hasValidateJwt: true,
+          jwtValidation: { hasRequiredClaims: false, hasAudiences: true, hasIssuers: false, hasOpenIdConfig: true },
+        },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const issuerFindings = findings.filter(f => f.ruleId === 'APIVET091' && f.title.includes('issuer'));
+      expect(issuerFindings.length).toBeGreaterThan(0);
+    });
+
+    it('should not flag when both audience and issuer are present', () => {
+      const spec = azureApimSpec({
+        global: {
+          hasValidateJwt: true,
+          jwtValidation: { hasRequiredClaims: true, hasAudiences: true, hasIssuers: true, hasOpenIdConfig: true },
+        },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET091');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET092 - Azure APIM missing rate limiting policy', () => {
+    const azureApimSpec = (policies: Record<string, unknown>): OpenApiSpec => ({
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0.0' },
+      servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+      paths: { '/items': { get: { responses: { '200': { description: 'OK' } } } } },
+      'x-azure-apim-policies': policies,
+    } as unknown as OpenApiSpec);
+
+    it('should detect missing rate limiting', () => {
+      const spec = azureApimSpec({
+        global: { hasRateLimit: false },
+        api: { hasRateLimit: false },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET092');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when rate limiting exists', () => {
+      const spec = azureApimSpec({
+        global: { hasRateLimit: true },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET092');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET093 - Azure APIM CORS wildcard', () => {
+    const azureApimSpec = (policies: Record<string, unknown>): OpenApiSpec => ({
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0.0' },
+      servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+      paths: { '/data': { get: { responses: { '200': { description: 'OK' } } } } },
+      'x-azure-apim-policies': policies,
+    } as unknown as OpenApiSpec);
+
+    it('should detect CORS wildcard origin', () => {
+      const spec = azureApimSpec({
+        global: { hasCors: true, corsAllowAll: true, corsConfig: { allowedOrigins: ['*'], allowCredentials: false } },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET093');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should detect CORS wildcard with credentials as critical', () => {
+      const spec = azureApimSpec({
+        api: { hasCors: true, corsAllowAll: true, corsConfig: { allowedOrigins: ['*'], allowCredentials: true } },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET093');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('critical');
+    });
+
+    it('should not flag when specific origins are set', () => {
+      const spec = azureApimSpec({
+        global: { hasCors: true, corsAllowAll: false, corsConfig: { allowedOrigins: ['https://app.example.com'], allowCredentials: false } },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET093');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET094 - Azure APIM admin paths without IP filter', () => {
+    it('should detect admin paths without IP filtering', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+        paths: {
+          '/admin/settings': { get: { responses: { '200': { description: 'OK' } } } },
+          '/users': { get: { responses: { '200': { description: 'OK' } } } },
+        },
+        'x-azure-apim-policies': {
+          global: { hasIpFilter: false },
+          api: { hasIpFilter: false },
+        },
+      } as unknown as OpenApiSpec;
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET094');
+      expect(finding).toBeDefined();
+    });
+
+    it('should not flag when no admin paths exist', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+        paths: {
+          '/users': { get: { responses: { '200': { description: 'OK' } } } },
+        },
+        'x-azure-apim-policies': {
+          global: { hasIpFilter: false },
+        },
+      } as unknown as OpenApiSpec;
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET094');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET095 - Azure APIM without backend authentication', () => {
+    const azureApimSpec = (policies: Record<string, unknown>): OpenApiSpec => ({
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0.0' },
+      servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+      paths: { '/data': { get: { responses: { '200': { description: 'OK' } } } } },
+      'x-azure-apim-policies': policies,
+    } as unknown as OpenApiSpec);
+
+    it('should detect missing backend authentication', () => {
+      const spec = azureApimSpec({
+        global: { hasAuthenticationManaged: false },
+        api: { hasAuthenticationManaged: false },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET095');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when managed identity auth exists', () => {
+      const spec = azureApimSpec({
+        global: { hasAuthenticationManaged: true },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET095');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET096 - Azure APIM without logging', () => {
+    const azureApimSpec = (policies: Record<string, unknown>): OpenApiSpec => ({
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0.0' },
+      servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+      paths: { '/data': { get: { responses: { '200': { description: 'OK' } } } } },
+      'x-azure-apim-policies': policies,
+    } as unknown as OpenApiSpec);
+
+    it('should detect missing logging policy', () => {
+      const spec = azureApimSpec({
+        global: { hasLog: false },
+        api: { hasLog: false },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET096');
+      expect(finding).toBeDefined();
+    });
+
+    it('should not flag when logging exists', () => {
+      const spec = azureApimSpec({
+        api: { hasLog: true },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET096');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET098 - validate-jwt without required claims', () => {
+    const azureApimSpec = (policies: Record<string, unknown>): OpenApiSpec => ({
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0.0' },
+      servers: [{ url: 'https://my-apim.azure-api.net/api' }],
+      paths: { '/data': { get: { responses: { '200': { description: 'OK' } } } } },
+      'x-azure-apim-policies': policies,
+    } as unknown as OpenApiSpec);
+
+    it('should detect JWT without required claims', () => {
+      const spec = azureApimSpec({
+        global: {
+          jwtValidation: { hasRequiredClaims: false, hasAudiences: true, hasIssuers: true },
+        },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET098');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when required claims are present', () => {
+      const spec = azureApimSpec({
+        global: {
+          jwtValidation: { hasRequiredClaims: true, hasAudiences: true, hasIssuers: true },
+        },
+      });
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET098');
+      expect(finding).toBeUndefined();
+    });
+  });
+
   describe('Rule count', () => {
-    it('should have at least 89 rules', () => {
-      expect(rules.length).toBeGreaterThanOrEqual(89);
+    it('should have at least 98 rules', () => {
+      expect(rules.length).toBeGreaterThanOrEqual(98);
     });
   });
 });

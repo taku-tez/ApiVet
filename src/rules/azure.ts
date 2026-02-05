@@ -1,6 +1,6 @@
 /**
  * Azure API Management and Related Services Rules
- * APIVET030, APIVET039-040, APIVET056-065
+ * APIVET030, APIVET039-040, APIVET056-065, APIVET090-098 (Policy-based)
  */
 
 import type { Finding } from '../types.js';
@@ -12,6 +12,56 @@ import {
   createFinding,
   getResponseHeaderNames
 } from './utils.js';
+
+// Helper: Extract policy metadata from spec (embedded by cloud scanner)
+interface PolicyMeta {
+  hasValidateJwt?: boolean;
+  hasRateLimit?: boolean;
+  hasIpFilter?: boolean;
+  hasCors?: boolean;
+  corsAllowAll?: boolean;
+  hasCache?: boolean;
+  hasLog?: boolean;
+  hasAuthenticationManaged?: boolean;
+  jwtValidation?: {
+    hasRequiredClaims?: boolean;
+    hasAudiences?: boolean;
+    hasIssuers?: boolean;
+    hasOpenIdConfig?: boolean;
+  };
+  ipFilter?: {
+    action?: string;
+    addressCount?: number;
+  };
+  corsConfig?: {
+    allowedOrigins?: string[];
+    allowCredentials?: boolean;
+  };
+  rateLimitConfig?: {
+    callsPerPeriod?: number;
+    renewalPeriod?: number;
+  };
+}
+
+interface PolicyData {
+  global?: PolicyMeta;
+  api?: PolicyMeta;
+}
+
+function getPolicyData(spec: Record<string, unknown>): PolicyData | undefined {
+  return spec['x-azure-apim-policies'] as PolicyData | undefined;
+}
+
+/**
+ * Check if a policy capability exists at either global or API level
+ */
+function hasPolicyCapability(
+  policies: PolicyData | undefined,
+  key: keyof PolicyMeta
+): boolean {
+  if (!policies) return false;
+  return !!(policies.global?.[key] || policies.api?.[key]);
+}
 
 export const azureRules: Rule[] = [
   // Azure APIM detection
@@ -691,6 +741,357 @@ export const azureRules: Rule[] = [
               }
             }
           }
+        }
+      }
+
+      return findings;
+    }
+  },
+
+  // ============================================
+  // Azure APIM Policy-Based Checks (APIVET090-098)
+  // These rules analyze actual APIM policies fetched via SDK
+  // ============================================
+
+  // APIM without validate-jwt policy
+  {
+    id: 'APIVET090',
+    title: 'Azure APIM missing validate-jwt policy',
+    description: 'Azure APIM should have validate-jwt policy for token validation',
+    severity: 'high',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings; // No policy data available (static scan only)
+
+      if (!hasPolicyCapability(policies, 'hasValidateJwt')) {
+        findings.push(createFinding(
+          'APIVET090',
+          'Azure APIM missing validate-jwt policy',
+          'No validate-jwt policy found at global or API level. Without JWT validation, APIM cannot verify bearer tokens, allowing unauthorized access.',
+          'high',
+          {
+            owaspCategory: 'API2:2023',
+            filePath,
+            remediation: 'Add <validate-jwt> inbound policy with header-name="Authorization". Configure required-claims, audiences, and issuers for Entra ID tokens.'
+          }
+        ));
+      }
+
+      return findings;
+    }
+  },
+
+  // validate-jwt without audience/issuer validation
+  {
+    id: 'APIVET091',
+    title: 'Azure APIM validate-jwt missing audience or issuer',
+    description: 'validate-jwt should validate both audience and issuer claims',
+    severity: 'high',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings;
+
+      // Check at both levels
+      for (const [level, policy] of Object.entries(policies)) {
+        if (!policy?.jwtValidation) continue; // No JWT validation at this level
+
+        const jwt = policy.jwtValidation;
+
+        if (!jwt.hasAudiences) {
+          findings.push(createFinding(
+            'APIVET091',
+            `Azure APIM validate-jwt at ${level} level missing audience validation`,
+            `The validate-jwt policy at ${level} level does not validate the token audience (aud claim). Tokens issued for other applications could be accepted.`,
+            'high',
+            {
+              owaspCategory: 'API2:2023',
+              filePath,
+              remediation: 'Add <audiences><audience>your-app-id</audience></audiences> to the validate-jwt policy. Use the Application ID URI or Client ID.'
+            }
+          ));
+        }
+
+        if (!jwt.hasIssuers) {
+          findings.push(createFinding(
+            'APIVET091',
+            `Azure APIM validate-jwt at ${level} level missing issuer validation`,
+            `The validate-jwt policy at ${level} level does not validate the token issuer (iss claim). Tokens from any Entra ID tenant could be accepted.`,
+            'high',
+            {
+              owaspCategory: 'API2:2023',
+              filePath,
+              remediation: 'Add <issuers><issuer>https://sts.windows.net/{tenant-id}/</issuer></issuers> to the validate-jwt policy.'
+            }
+          ));
+        }
+      }
+
+      return findings;
+    }
+  },
+
+  // APIM without rate limiting policy
+  {
+    id: 'APIVET092',
+    title: 'Azure APIM missing rate limiting policy',
+    description: 'Azure APIM should have rate-limit or rate-limit-by-key policy to prevent abuse',
+    severity: 'medium',
+    owaspCategory: 'API4:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings;
+
+      if (!hasPolicyCapability(policies, 'hasRateLimit')) {
+        findings.push(createFinding(
+          'APIVET092',
+          'Azure APIM missing rate limiting policy',
+          'No rate-limit or rate-limit-by-key policy found. Without rate limiting, APIs are vulnerable to brute force, DDoS, and resource exhaustion attacks.',
+          'medium',
+          {
+            owaspCategory: 'API4:2023',
+            filePath,
+            remediation: 'Add <rate-limit-by-key> inbound policy. Use counter-key="@(context.Subscription?.Key ?? context.Request.IpAddress)" for per-client limiting. Set appropriate calls and renewal-period values.'
+          }
+        ));
+      }
+
+      return findings;
+    }
+  },
+
+  // APIM CORS wildcard origin
+  {
+    id: 'APIVET093',
+    title: 'Azure APIM CORS policy allows all origins',
+    description: 'CORS wildcard origin (*) allows any website to make API requests',
+    severity: 'high',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings;
+
+      for (const [level, policy] of Object.entries(policies)) {
+        if (!policy?.corsAllowAll) continue;
+
+        const withCredentials = policy.corsConfig?.allowCredentials;
+
+        findings.push(createFinding(
+          'APIVET093',
+          `Azure APIM CORS wildcard origin at ${level} level`,
+          `The CORS policy at ${level} level allows all origins (*).${withCredentials ? ' Combined with allow-credentials="true", this is especially dangerous as it allows credential theft from any website.' : ' Any website can make cross-origin requests to this API.'}`,
+          withCredentials ? 'critical' : 'high',
+          {
+            owaspCategory: 'API8:2023',
+            filePath,
+            remediation: 'Replace wildcard origin with specific allowed origins. Example: <allowed-origins><origin>https://your-app.com</origin></allowed-origins>. Never use * with allow-credentials="true".'
+          }
+        ));
+      }
+
+      return findings;
+    }
+  },
+
+  // APIM without IP filtering
+  {
+    id: 'APIVET094',
+    title: 'Azure APIM without IP filtering policy',
+    description: 'Consider restricting API access by IP address for internal/admin APIs',
+    severity: 'low',
+    owaspCategory: 'API5:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings;
+
+      // Only flag if there are paths that look like admin/internal endpoints
+      const paths = Object.keys(spec.paths || {});
+      const hasAdminPaths = paths.some(p => {
+        const lower = p.toLowerCase();
+        return lower.includes('/admin') || lower.includes('/internal') ||
+               lower.includes('/management') || lower.includes('/config');
+      });
+
+      if (hasAdminPaths && !hasPolicyCapability(policies, 'hasIpFilter')) {
+        findings.push(createFinding(
+          'APIVET094',
+          'Azure APIM admin/internal paths without IP filtering',
+          'This API has admin/internal paths but no ip-filter policy. Sensitive endpoints should be restricted by IP address.',
+          'low',
+          {
+            owaspCategory: 'API5:2023',
+            filePath,
+            remediation: 'Add <ip-filter action="allow"> inbound policy for admin paths. Specify allowed IP ranges for your organization. Combine with VNet integration for network-level isolation.'
+          }
+        ));
+      }
+
+      return findings;
+    }
+  },
+
+  // APIM without backend authentication
+  {
+    id: 'APIVET095',
+    title: 'Azure APIM without backend authentication',
+    description: 'APIM should authenticate to backend services to prevent direct backend access bypass',
+    severity: 'medium',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings;
+
+      // Check for any form of backend authentication
+      const hasBackendAuth = (p: PolicyMeta | undefined) =>
+        p?.hasAuthenticationManaged ||
+        (spec as Record<string, unknown>)['x-azure-apim-authentication-certificate'] ||
+        (spec as Record<string, unknown>)['x-azure-apim-authentication-basic'];
+
+      const globalHasAuth = hasBackendAuth(policies.global);
+      const apiHasAuth = hasBackendAuth(policies.api);
+
+      if (!globalHasAuth && !apiHasAuth) {
+        findings.push(createFinding(
+          'APIVET095',
+          'Azure APIM without backend authentication policy',
+          'No authentication-managed-identity, authentication-certificate, or authentication-basic policy found. Backend services can be accessed directly bypassing APIM.',
+          'medium',
+          {
+            owaspCategory: 'API2:2023',
+            filePath,
+            remediation: 'Add <authentication-managed-identity> to authenticate to backends using Managed Identity. Alternatively, use client certificates or restrict backend to APIM VNet only.'
+          }
+        ));
+      }
+
+      return findings;
+    }
+  },
+
+  // APIM without logging/monitoring
+  {
+    id: 'APIVET096',
+    title: 'Azure APIM without logging policy',
+    description: 'APIM should log API activity for security monitoring and forensics',
+    severity: 'low',
+    owaspCategory: 'API9:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings;
+
+      if (!hasPolicyCapability(policies, 'hasLog')) {
+        findings.push(createFinding(
+          'APIVET096',
+          'Azure APIM without logging policy',
+          'No log-to-eventhub or trace policy found. Without logging, security incidents cannot be detected or investigated.',
+          'low',
+          {
+            owaspCategory: 'API9:2023',
+            filePath,
+            remediation: 'Enable Application Insights integration in APIM. Add <trace> policy for detailed request/response logging. Use <log-to-eventhub> for streaming to SIEM.'
+          }
+        ));
+      }
+
+      return findings;
+    }
+  },
+
+  // APIM CORS with credentials
+  {
+    id: 'APIVET097',
+    title: 'Azure APIM CORS allows credentials with broad origins',
+    description: 'CORS with allow-credentials and non-restrictive origins enables credential theft',
+    severity: 'high',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings;
+
+      for (const [level, policy] of Object.entries(policies)) {
+        if (!policy?.corsConfig?.allowCredentials) continue;
+        if (policy.corsAllowAll) continue; // Already caught by APIVET093
+
+        // Check for overly broad origins (e.g., many origins or patterns)
+        const origins = policy.corsConfig.allowedOrigins || [];
+        const hasBroadOrigin = origins.some((o: string) =>
+          o.includes('localhost') || o.includes('127.0.0.1') ||
+          o.includes('.example.') || o.endsWith('.test')
+        );
+
+        if (hasBroadOrigin) {
+          findings.push(createFinding(
+            'APIVET097',
+            `Azure APIM CORS at ${level} level allows credentials with development origins`,
+            `The CORS policy at ${level} level has allow-credentials="true" with development/test origins (localhost, .example, .test). These should be removed in production.`,
+            'high',
+            {
+              owaspCategory: 'API8:2023',
+              filePath,
+              remediation: 'Remove localhost and test origins from production CORS policy. Use environment-specific APIM configurations for dev/staging/prod.'
+            }
+          ));
+        }
+      }
+
+      return findings;
+    }
+  },
+
+  // APIM JWT without required claims
+  {
+    id: 'APIVET098',
+    title: 'Azure APIM validate-jwt without required claims',
+    description: 'validate-jwt should check required claims for proper authorization',
+    severity: 'medium',
+    owaspCategory: 'API5:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      if (!isAzureApim(spec.servers)) return findings;
+
+      const policies = getPolicyData(spec as Record<string, unknown>);
+      if (!policies) return findings;
+
+      for (const [level, policy] of Object.entries(policies)) {
+        if (!policy?.jwtValidation) continue;
+
+        if (!policy.jwtValidation.hasRequiredClaims) {
+          findings.push(createFinding(
+            'APIVET098',
+            `Azure APIM validate-jwt at ${level} level without required claims`,
+            `The validate-jwt policy at ${level} level does not enforce required claims (e.g., roles, scp, groups). Without claim validation, any authenticated user can access any endpoint regardless of permissions.`,
+            'medium',
+            {
+              owaspCategory: 'API5:2023',
+              filePath,
+              remediation: 'Add <required-claims> to validate-jwt. Example: <claim name="scp" match="any"><value>api.read</value></claim>. Use app roles for RBAC.'
+            }
+          ));
         }
       }
 
