@@ -47,6 +47,33 @@ apivet scan openapi.yaml --json
 | API9 | Improper Inventory Management | ✅ Discovery |
 | API10 | Unsafe Consumption of APIs | 🔄 Partial |
 
+## Cloud Provider Support
+
+### AWS
+- API Gateway (REST & HTTP APIs)
+- Lambda authorizers & Cognito
+- Request validation
+- AppSync GraphQL
+- WAF & CloudFront recommendations
+
+### Azure
+- API Management (APIM)
+- Functions & App Service
+- Front Door
+
+### GCP
+- Cloud Endpoints
+- Cloud Run authentication
+- Firebase / Identity Platform
+
+### Other Platforms
+- **CDN**: Cloudflare Workers, Akamai, Fastly
+- **Serverless**: Vercel, Netlify
+- **PaaS**: Heroku, Railway, Render, Fly.io, DigitalOcean
+- **BaaS**: Supabase (RLS checks)
+- **API Gateways**: Kong
+- **Kubernetes**: Ingress, Istio, Service Mesh
+
 ## Commands
 
 ### `apivet scan <path>`
