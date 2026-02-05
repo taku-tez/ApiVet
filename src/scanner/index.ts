@@ -19,6 +19,7 @@ export interface ScanResult {
 export interface ScanOptions {
   recursive?: boolean;
   severity?: Severity;
+  extraIgnore?: string[];
 }
 
 function parseSpec(content: string, filePath: string): OpenApiSpec {
@@ -86,7 +87,7 @@ export async function scanOpenApiSpec(
   targetPath: string,
   options: ScanOptions = {}
 ): Promise<ScanResult[]> {
-  const { recursive = false, severity } = options;
+  const { recursive = false, severity, extraIgnore = [] } = options;
   const results: ScanResult[] = [];
   
   // FB3: Handle non-existent paths gracefully instead of throwing
@@ -109,23 +110,26 @@ export async function scanOpenApiSpec(
     const result = await scanFile(targetPath);
     results.push(result);
   } else if (stat.isDirectory()) {
+    // Support additional OpenAPI file naming conventions
     const pattern = recursive 
-      ? path.join(targetPath, '**/*.{json,yaml,yml}')
+      ? path.join(targetPath, '**/*.{json,yaml,yml,openapi.json,openapi.yaml,swagger.json,swagger.yaml}')
       : path.join(targetPath, '*.{json,yaml,yml}');
     
-    // FB5: Ignore common non-source directories to avoid unnecessary scanning
+    // Default ignore patterns + user-specified extras
+    const defaultIgnore = [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.git/**',
+      '**/vendor/**',
+      '**/coverage/**',
+      '**/.next/**',
+      '**/.nuxt/**'
+    ];
+    
     const files = await glob(pattern, { 
       nodir: true,
-      ignore: [
-        '**/node_modules/**',
-        '**/dist/**',
-        '**/build/**',
-        '**/.git/**',
-        '**/vendor/**',
-        '**/coverage/**',
-        '**/.next/**',
-        '**/.nuxt/**'
-      ]
+      ignore: [...defaultIgnore, ...extraIgnore]
     });
     
     for (const file of files) {

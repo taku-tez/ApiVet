@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import { checkEndpoint, type CheckResult } from '../checker/index.js';
 import { formatCheckResult, formatCheckResultJson } from '../formatter.js';
 
@@ -7,15 +8,16 @@ interface CheckCommandOptions {
   authToken?: string;
   authHeader?: string;
   timeout?: string;
+  method?: string;
   json?: boolean;
+  output?: string;
 }
 
 export async function checkCommand(
   url: string,
   options: CheckCommandOptions
 ): Promise<void> {
-  // FB1: Default headers to false (only enable when --headers flag is specified)
-  const { headers = false, auth, authToken, authHeader, timeout = '10000', json } = options;
+  const { headers = false, auth, authToken, authHeader, timeout = '10000', method = 'GET', json, output } = options;
 
   // Validate URL
   let parsedUrl: URL;
@@ -55,10 +57,18 @@ export async function checkCommand(
     console.error(`Warning: --auth-header is ignored without --auth. Specify --auth to use authentication.`);
   }
 
-  // FB3: Validate timeout
+  // Validate timeout
   const timeoutMs = parseInt(timeout, 10);
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1) {
     console.error(`Error: Invalid timeout value "${timeout}". Must be a positive integer (milliseconds).`);
+    process.exit(2);
+  }
+
+  // Validate HTTP method
+  const validMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+  const normalizedMethod = method.toUpperCase();
+  if (!validMethods.includes(normalizedMethod)) {
+    console.error(`Error: Invalid HTTP method "${method}". Must be one of: ${validMethods.join(', ')}`);
     process.exit(2);
   }
 
@@ -68,7 +78,8 @@ export async function checkCommand(
       auth: auth as 'basic' | 'bearer' | 'apikey' | undefined,
       authToken,
       authHeader,
-      timeout: timeoutMs
+      timeout: timeoutMs,
+      method: normalizedMethod
     });
 
     // Format output
@@ -76,7 +87,13 @@ export async function checkCommand(
       ? formatCheckResultJson(result)
       : formatCheckResult(result);
 
-    console.log(formattedOutput);
+    // Write to file or console
+    if (output) {
+      fs.writeFileSync(output, formattedOutput);
+      console.log(`Results written to ${output}`);
+    } else {
+      console.log(formattedOutput);
+    }
 
     // Exit code
     if (result.status === 'error') {

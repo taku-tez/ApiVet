@@ -6,13 +6,14 @@ interface InventoryCommandOptions {
   framework?: string;
   json?: boolean;
   output?: string;
+  ignore?: string;
 }
 
 export async function inventoryCommand(
   targetPath: string,
   options: InventoryCommandOptions
 ): Promise<void> {
-  const { framework, json, output } = options;
+  const { framework, json, output, ignore } = options;
   
   // Validate path exists
   if (!fs.existsSync(targetPath)) {
@@ -26,10 +27,14 @@ export async function inventoryCommand(
     console.error(`Error: Invalid framework. Must be one of: ${validFrameworks.join(', ')}`);
     process.exit(2);
   }
+
+  // Parse ignore patterns
+  const extraIgnore = ignore ? ignore.split(',').map(p => p.trim()) : undefined;
   
   try {
     const endpoints = await discoverEndpoints(targetPath, {
-      framework: framework as 'express' | 'fastify' | 'koa' | 'hono' | 'auto' | undefined
+      framework: framework as 'express' | 'fastify' | 'koa' | 'hono' | 'auto' | undefined,
+      extraIgnore
     });
     
     // Format output

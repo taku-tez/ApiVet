@@ -16,6 +16,7 @@ export interface CheckOptions {
   authToken?: string;
   authHeader?: string;
   timeout?: number;
+  method?: string;
 }
 
 const SECURITY_HEADERS: Array<{
@@ -143,7 +144,8 @@ export async function checkEndpoint(
     auth,
     authToken,
     authHeader,
-    timeout = 10000
+    timeout = 10000,
+    method = 'GET'
   } = options;
 
   const findings: Finding[] = [];
@@ -196,7 +198,7 @@ export async function checkEndpoint(
 
     const startTime = Date.now();
     const response = await fetch(url, {
-      method: 'GET',
+      method,
       signal: controller.signal,
       headers: requestHeaders
     });

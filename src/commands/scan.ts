@@ -8,13 +8,16 @@ interface ScanCommandOptions {
   severity?: string;
   recursive?: boolean;
   output?: string;
+  ignore?: string;
+  onlyRules?: string;
+  excludeRules?: string;
 }
 
 export async function scanCommand(
   targetPath: string,
   options: ScanCommandOptions
 ): Promise<void> {
-  const { json, severity, recursive, output } = options;
+  const { json, severity, recursive, output, ignore, onlyRules, excludeRules } = options;
   
   // Validate path exists
   if (!fs.existsSync(targetPath)) {
@@ -28,12 +31,36 @@ export async function scanCommand(
     console.error(`Error: Invalid severity. Must be one of: ${validSeverities.join(', ')}`);
     process.exit(2);
   }
+
+  // Parse ignore patterns
+  const extraIgnore = ignore ? ignore.split(',').map(p => p.trim()) : undefined;
+
+  // Parse rule filters
+  const onlyRuleIds = onlyRules ? onlyRules.split(',').map(r => r.trim().toUpperCase()) : undefined;
+  const excludeRuleIds = excludeRules ? excludeRules.split(',').map(r => r.trim().toUpperCase()) : undefined;
   
   try {
-    const results = await scanOpenApiSpec(targetPath, {
+    let results = await scanOpenApiSpec(targetPath, {
       recursive,
-      severity: severity as Severity | undefined
+      severity: severity as Severity | undefined,
+      extraIgnore
     });
+
+    // Filter rules if specified
+    if (onlyRuleIds || excludeRuleIds) {
+      for (const result of results) {
+        result.findings = result.findings.filter(f => {
+          const ruleId = f.ruleId.toUpperCase();
+          if (onlyRuleIds && !onlyRuleIds.some(id => ruleId.startsWith(id))) {
+            return false;
+          }
+          if (excludeRuleIds && excludeRuleIds.some(id => ruleId.startsWith(id))) {
+            return false;
+          }
+          return true;
+        });
+      }
+    }
     
     // Format output
     const formattedOutput = json 

@@ -13,6 +13,7 @@ export interface Endpoint {
 
 export interface DiscoveryOptions {
   framework?: 'express' | 'fastify' | 'koa' | 'hono' | 'auto';
+  extraIgnore?: string[];
 }
 
 interface FrameworkPattern {
@@ -361,7 +362,7 @@ export async function discoverEndpoints(
   targetPath: string,
   options: DiscoveryOptions = {}
 ): Promise<Endpoint[]> {
-  const { framework } = options;
+  const { framework, extraIgnore = [] } = options;
   const endpoints: Endpoint[] = [];
 
   // Determine which framework patterns to use
@@ -375,7 +376,7 @@ export async function discoverEndpoints(
     frameworksToScan = FRAMEWORKS;
   }
 
-  // FB5: Handle fs.statSync exception gracefully
+  // Handle fs.statSync exception gracefully
   let stat: fs.Stats;
   try {
     stat = fs.statSync(targetPath);
@@ -388,15 +389,24 @@ export async function discoverEndpoints(
     const fileEndpoints = await scanFileWithDetection(targetPath, framework, frameworksToScan);
     endpoints.push(...fileEndpoints);
   } else if (stat.isDirectory()) {
-    // FB1: Include .jsx, .tsx, .cjs, .cts extensions
+    // Include .jsx, .tsx, .cjs, .cts extensions
     const pattern = path.join(targetPath, '**/*.{js,ts,mjs,mts,jsx,tsx,cjs,cts}');
+
+    // Default ignore patterns + user-specified extras
+    const defaultIgnore = [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/*.test.*',
+      '**/*.spec.*'
+    ];
 
     const files = await glob(pattern, {
       nodir: true,
-      ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/*.test.*', '**/*.spec.*']
+      ignore: [...defaultIgnore, ...extraIgnore]
     });
 
-    // FB4: Process files without re-reading
+    // Process files without re-reading
     for (const file of files) {
       const fileEndpoints = await scanFileWithDetection(file, framework, frameworksToScan);
       endpoints.push(...fileEndpoints);
