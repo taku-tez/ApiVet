@@ -1,0 +1,104 @@
+openapi: '3.0.0'
+info:
+  title: GCP Cloud Endpoints Example API
+  version: '1.0.0'
+  description: Example API deployed on GCP Cloud Endpoints - demonstrates various security configurations
+
+x-google-endpoints:
+  - name: myapi.endpoints.myproject.cloud.goog
+    target: 'SERVICE_NAME'
+    allowCors: true
+
+servers:
+  - url: https://myapi.endpoints.myproject.cloud.goog
+    description: Cloud Endpoints Gateway
+
+security: []
+
+components:
+  securitySchemes:
+    # API key in query (bad practice)
+    apiKeyQuery:
+      type: apiKey
+      in: query
+      name: key
+    # Google OAuth2
+    googleOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://accounts.google.com/o/oauth2/v2/auth
+          tokenUrl: https://oauth2.googleapis.com/token
+          scopes:
+            'https://www.googleapis.com/auth/cloud-platform': Full Cloud Platform access
+            'https://www.googleapis.com/auth/compute.readonly': Compute Engine read-only
+  schemas:
+    Resource:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        data:
+          type: object
+
+paths:
+  /resources:
+    get:
+      summary: List resources
+      operationId: listResources
+      x-google-backend:
+        address: http://backend.internal:8080
+      # No security defined - will trigger multiple warnings
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Resource'
+
+  /resources/{id}:
+    get:
+      summary: Get resource by ID
+      operationId: getResource
+      x-google-backend:
+        address: https://my-service.run.app
+      security:
+        - googleOAuth: []  # No scopes - triggers APIVET074
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        '404':
+          description: Not Found
+
+  /public/health:
+    get:
+      summary: Health check endpoint
+      operationId: healthCheck
+      x-google-allow: all  # Intentionally public - triggers warning
+      responses:
+        '200':
+          description: OK
+
+  /admin/config:
+    get:
+      summary: Admin configuration
+      operationId: getAdminConfig
+      # No auth on admin endpoint!
+      responses:
+        '200':
+          description: Configuration

@@ -1819,9 +1819,433 @@ describe('ApiVet Rules', () => {
     });
   });
 
+  // ============================================
+  // GCP Deep Security Rules (APIVET066-075)
+  // ============================================
+
+  describe('APIVET066 - GCP API Key Requirement', () => {
+    it('should detect GCP API without API key scheme', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET066');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when API key is defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        components: {
+          securitySchemes: {
+            apiKey: { type: 'apiKey', in: 'query', name: 'key' }
+          }
+        },
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET066');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET067 - GCP Unauthenticated Access', () => {
+    it('should detect x-google-allow: all on endpoint', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.run.app' }],
+        paths: {
+          '/public': {
+            get: {
+              'x-google-allow': 'all',
+              responses: { '200': { description: 'OK' } }
+            } as any
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET067');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should detect x-google-allow: all at spec level', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        'x-google-allow': 'all',
+        servers: [{ url: 'https://myapi.cloudfunctions.net' }],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      } as any;
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET067');
+      expect(finding).toBeDefined();
+    });
+  });
+
+  describe('APIVET068 - GCP Cloud Functions Auth', () => {
+    it('should detect Cloud Functions without auth', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://region-project.cloudfunctions.net' }],
+        paths: { '/func': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET068');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when security is defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://region-project.cloudfunctions.net' }],
+        security: [{ bearerAuth: [] }],
+        components: {
+          securitySchemes: {
+            bearerAuth: { type: 'http', scheme: 'bearer' }
+          }
+        },
+        paths: { '/func': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET068');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET069 - GCP API Quota', () => {
+    it('should detect GCP API without quota', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET069');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when 429 response exists', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: {
+          '/test': {
+            get: {
+              responses: {
+                '200': { description: 'OK' },
+                '429': { description: 'Quota exceeded' }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET069');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when x-google-quota exists', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: {
+          '/test': {
+            get: {
+              'x-google-quota': { metricCosts: { 'read-requests': 1 } },
+              responses: { '200': { description: 'OK' } }
+            } as any
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET069');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET070 - GCP Cloud Armor', () => {
+    it('should detect GCP API without Cloud Armor', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.run.app' }],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET070');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('low');
+    });
+  });
+
+  describe('APIVET071 - GCP Backend HTTPS', () => {
+    it('should detect HTTP in x-google-backend', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: {
+          '/test': {
+            get: {
+              'x-google-backend': {
+                address: 'http://backend.internal:8080'
+              },
+              responses: { '200': { description: 'OK' } }
+            } as any
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET071');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should not flag HTTPS backend', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: {
+          '/test': {
+            get: {
+              'x-google-backend': {
+                address: 'https://backend.run.app'
+              },
+              responses: { '200': { description: 'OK' } }
+            } as any
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET071');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should allow localhost HTTP', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: {
+          '/test': {
+            get: {
+              'x-google-backend': {
+                address: 'http://localhost:8080'
+              },
+              responses: { '200': { description: 'OK' } }
+            } as any
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET071');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET072 - GCP API Versioning', () => {
+    it('should detect GCP API without versioning', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: {
+          '/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET072');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('low');
+    });
+
+    it('should not flag when version in path', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        paths: {
+          '/v1/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET072');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET073 - Apigee Detection', () => {
+    it('should detect Apigee URLs', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://org-env.apigee.net/v1' }],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET073');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('info');
+    });
+  });
+
+  describe('APIVET074 - GCP OAuth2 Scopes', () => {
+    it('should detect Google OAuth2 without scopes', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.run.app' }],
+        components: {
+          securitySchemes: {
+            google: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+                  tokenUrl: 'https://oauth2.googleapis.com/token',
+                  scopes: { 'https://www.googleapis.com/auth/cloud-platform': 'Cloud Platform' }
+                }
+              }
+            }
+          }
+        },
+        paths: {
+          '/data': {
+            get: {
+              security: [{ google: [] }],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET074');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when scopes are specified', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.run.app' }],
+        components: {
+          securitySchemes: {
+            google: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+                  tokenUrl: 'https://oauth2.googleapis.com/token',
+                  scopes: { 'https://www.googleapis.com/auth/cloud-platform': 'Cloud Platform' }
+                }
+              }
+            }
+          }
+        },
+        paths: {
+          '/data': {
+            get: {
+              security: [{ google: ['https://www.googleapis.com/auth/cloud-platform'] }],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET074');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET075 - GCP API Key in Query', () => {
+    it('should detect API key in query string', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        components: {
+          securitySchemes: {
+            apiKey: {
+              type: 'apiKey',
+              in: 'query',
+              name: 'key'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET075');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag API key in header', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.endpoints.project.cloud.goog' }],
+        components: {
+          securitySchemes: {
+            apiKey: {
+              type: 'apiKey',
+              in: 'header',
+              name: 'X-API-Key'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET075');
+      expect(finding).toBeUndefined();
+    });
+  });
+
   describe('Rule count', () => {
-    it('should have at least 65 rules', () => {
-      expect(rules.length).toBeGreaterThanOrEqual(65);
+    it('should have at least 75 rules', () => {
+      expect(rules.length).toBeGreaterThanOrEqual(75);
     });
   });
 });

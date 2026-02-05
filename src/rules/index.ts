@@ -6,7 +6,7 @@
  * - auth.ts: JWT and OAuth2 authentication rules (APIVET016-025)
  * - aws.ts: AWS API Gateway and related services (APIVET026-029, 034, 036-038, 048-049)
  * - azure.ts: Azure API Management and services (APIVET030, 039-040, 056-065)
- * - gcp.ts: GCP Cloud Endpoints, Cloud Run, Firebase (APIVET031, 041-042)
+ * - gcp.ts: GCP Cloud Endpoints, Cloud Run, Firebase, API Gateway (APIVET031, 041-042, 066-075)
  * - platforms.ts: CDN, PaaS, and other platforms (APIVET043-047, 050-055)
  * - general.ts: General cloud security rules (APIVET032-033, 035)
  */
