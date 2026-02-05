@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('apivet')
   .description('API Security Scanner - Static and runtime analysis for API security posture')
-  .version('0.2.1');
+  .version('0.2.2');
 
 program
   .command('scan <path>')
@@ -35,7 +35,7 @@ program
 program
   .command('inventory <path>')
   .description('Discover and catalog API endpoints from source code')
-  .option('--framework <name>', 'Target framework (express, fastify, koa, hono)')
+  .option('--framework <name>', 'Target framework: express, fastify, koa, hono, auto (default: auto)')
   .option('-j, --json', 'Output as JSON')
   .option('-o, --output <file>', 'Write results to file')
   .action(inventoryCommand);

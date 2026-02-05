@@ -208,8 +208,15 @@ export async function checkEndpoint(
     });
 
     if (checkHeaders) {
+      const isHttps = parsedUrl.protocol === 'https:';
+      
       // Check for missing security headers
       for (const header of SECURITY_HEADERS) {
+        // FB4: Skip HSTS check for HTTP endpoints (HSTS only applies to HTTPS)
+        if (header.name === 'strict-transport-security' && !isHttps) {
+          continue;
+        }
+        
         if (!responseHeaders[header.name]) {
           if (header.required) {
             findings.push({

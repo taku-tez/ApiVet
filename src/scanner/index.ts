@@ -113,7 +113,20 @@ export async function scanOpenApiSpec(
       ? path.join(targetPath, '**/*.{json,yaml,yml}')
       : path.join(targetPath, '*.{json,yaml,yml}');
     
-    const files = await glob(pattern, { nodir: true });
+    // FB5: Ignore common non-source directories to avoid unnecessary scanning
+    const files = await glob(pattern, { 
+      nodir: true,
+      ignore: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/build/**',
+        '**/.git/**',
+        '**/vendor/**',
+        '**/coverage/**',
+        '**/.next/**',
+        '**/.nuxt/**'
+      ]
+    });
     
     for (const file of files) {
       const result = await scanFile(file);

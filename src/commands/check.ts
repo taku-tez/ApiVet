@@ -50,6 +50,11 @@ export async function checkCommand(
     process.exit(2);
   }
 
+  // FB3: Warn when --auth-header is specified without --auth (it will be ignored)
+  if (authHeader && !auth) {
+    console.error(`Warning: --auth-header is ignored without --auth. Specify --auth to use authentication.`);
+  }
+
   // FB3: Validate timeout
   const timeoutMs = parseInt(timeout, 10);
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1) {
