@@ -393,5 +393,64 @@ const example = "app.get('/string-route', handler)"; // in string, should not ma
       expect(endpoints.some(e => e.path === '/jsdoc-route')).toBe(false);
       expect(endpoints.some(e => e.path === '/string-route')).toBe(false);
     });
+
+    // Express router mount detection
+    it('should detect Express router mount points', async () => {
+      const routerMountFile = path.join(TEST_DIR, 'router-mounts.js');
+      fs.writeFileSync(
+        routerMountFile,
+        `
+const express = require('express');
+const app = express();
+const userRouter = require('./users');
+const apiRouter = require('./api');
+
+app.use('/api', apiRouter);
+app.use('/users', userRouter);
+router.use('/v1', v1Router);
+
+app.get('/health', (req, res) => res.send('OK'));
+`
+      );
+
+      const endpoints = await discoverEndpoints(routerMountFile, { framework: 'express' });
+      
+      // Should find mount points as USE method
+      expect(endpoints.some(e => e.method === 'USE' && e.path.includes('/api'))).toBe(true);
+      expect(endpoints.some(e => e.method === 'USE' && e.path.includes('/users'))).toBe(true);
+      expect(endpoints.some(e => e.method === 'USE' && e.path.includes('/v1'))).toBe(true);
+      // Should also find regular routes
+      expect(endpoints.some(e => e.method === 'GET' && e.path === '/health')).toBe(true);
+    });
+
+    // NestJS controller without prefix
+    it('should handle NestJS controller without prefix', async () => {
+      const noPrefixController = path.join(TEST_DIR, 'no-prefix-controller.ts');
+      fs.writeFileSync(
+        noPrefixController,
+        `
+import { Controller, Get } from '@nestjs/common';
+
+@Controller()
+export class RootController {
+  @Get()
+  root() {
+    return 'Hello';
+  }
+
+  @Get('health')
+  health() {
+    return { status: 'ok' };
+  }
+}
+`
+      );
+
+      const endpoints = await discoverEndpoints(noPrefixController, { framework: 'nestjs' });
+      
+      // Without @Controller prefix, routes should be at root level
+      expect(endpoints.some(e => e.method === 'GET' && e.path === '/')).toBe(true);
+      expect(endpoints.some(e => e.method === 'GET' && e.path === '/health')).toBe(true);
+    });
   });
 });

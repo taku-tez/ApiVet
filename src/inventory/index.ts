@@ -337,13 +337,18 @@ async function scanFile(
               const normalizedPrefix = prefix.startsWith('/') ? prefix : `/${prefix}`;
               const normalizedRoute = extracted.path === '/' ? '' : extracted.path;
               fullPath = normalizedPrefix + (normalizedRoute.startsWith('/') ? normalizedRoute : `/${normalizedRoute}`);
-              // Remove trailing slash unless it's just "/"
-              if (fullPath !== '/' && fullPath.endsWith('/')) {
-                fullPath = fullPath.slice(0, -1);
+            } else {
+              // No prefix - still ensure path starts with /
+              if (fullPath !== '/' && !fullPath.startsWith('/')) {
+                fullPath = `/${fullPath}`;
               }
-              // Fix double slashes
-              fullPath = fullPath.replace(/\/+/g, '/');
             }
+            // Remove trailing slash unless it's just "/"
+            if (fullPath !== '/' && fullPath.endsWith('/')) {
+              fullPath = fullPath.slice(0, -1);
+            }
+            // Fix double slashes
+            fullPath = fullPath.replace(/\/+/g, '/');
             
             endpoints.push({
               method: extracted.method,
