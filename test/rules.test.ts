@@ -1242,9 +1242,586 @@ describe('ApiVet Rules', () => {
     });
   });
 
+  // ============================================
+  // Azure APIM Deep Security Rules (APIVET056-065)
+  // ============================================
+
+  describe('APIVET056 - Azure APIM Subscription Key', () => {
+    it('should detect APIM without subscription key scheme', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET056');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when subscription key is defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        components: {
+          securitySchemes: {
+            subscriptionKey: {
+              type: 'apiKey',
+              in: 'header',
+              name: 'Ocp-Apim-Subscription-Key'
+            }
+          }
+        },
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET056');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag non-APIM APIs', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://api.example.com' }],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET056');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET057 - Azure Management Endpoint', () => {
+    it('should detect management.azure.com in servers', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://management.azure.com/subscriptions/xxx' }],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET057');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should not flag APIM gateway URLs', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET057');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET058 - Azure APIM Auth', () => {
+    it('should detect APIM endpoint without auth', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {
+          '/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET058');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should not flag when global security is defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        security: [{ apiKey: [] }],
+        components: {
+          securitySchemes: {
+            apiKey: { type: 'apiKey', in: 'header', name: 'Ocp-Apim-Subscription-Key' }
+          }
+        },
+        paths: {
+          '/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET058');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when operation has security', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {
+          '/users': {
+            get: {
+              security: [{ bearerAuth: [] }],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET058');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET059 - Azure APIM Rate Limiting', () => {
+    it('should detect APIM without rate limiting', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {
+          '/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET059');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when rate limit headers exist', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  headers: {
+                    'X-RateLimit-Limit': { schema: { type: 'integer' } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET059');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when 429 response is defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': { description: 'OK' },
+                '429': { description: 'Too Many Requests' }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET059');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET060 - Azure APIM Versioning', () => {
+    it('should detect APIM without versioning', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {
+          '/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET060');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('low');
+    });
+
+    it('should not flag when version in path', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {
+          '/v1/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET060');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when api-version query param exists', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {
+          '/users': {
+            get: {
+              parameters: [
+                { name: 'api-version', in: 'query', schema: { type: 'string' } }
+              ],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET060');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when version in server URL', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net/v2' }],
+        paths: {
+          '/users': {
+            get: { responses: { '200': { description: 'OK' } } }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET060');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET061 - Azure APIM Subscription Key in Query', () => {
+    it('should detect subscription key in query string', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        components: {
+          securitySchemes: {
+            subKey: {
+              type: 'apiKey',
+              in: 'query',
+              name: 'subscription-key'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET061');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag subscription key in header', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        components: {
+          securitySchemes: {
+            subKey: {
+              type: 'apiKey',
+              in: 'header',
+              name: 'Ocp-Apim-Subscription-Key'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET061');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET062 - Azure APIM Backend HTTPS', () => {
+    it('should detect APIM HTTP server URL', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'http://myapi.azure-api.net' }],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET062');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should not flag HTTPS APIM URL', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET062');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should detect HTTP parameterized host', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        'x-ms-parameterized-host': {
+          hostTemplate: 'http://{region}.azure-api.net',
+          parameters: [{ name: 'region' }]
+        },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: {}
+      } as any;
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET062');
+      expect(finding).toBeDefined();
+    });
+  });
+
+  describe('APIVET063 - Azure Entra ID Detection', () => {
+    it('should detect Entra ID OAuth2', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            entra: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize',
+                  tokenUrl: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
+                  scopes: { read: 'Read' }
+                }
+              }
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET063');
+      expect(finding).toBeDefined();
+      expect(finding?.title).toContain('Entra ID');
+    });
+
+    it('should detect Azure B2C', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            b2c: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://contoso.b2clogin.com/contoso.onmicrosoft.com/oauth2/v2.0/authorize',
+                  tokenUrl: 'https://contoso.b2clogin.com/contoso.onmicrosoft.com/oauth2/v2.0/token',
+                  scopes: { read: 'Read' }
+                }
+              }
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET063');
+      expect(finding).toBeDefined();
+      expect(finding?.title).toContain('B2C');
+    });
+  });
+
+  describe('APIVET064 - Azure APIM WAF', () => {
+    it('should detect APIM without WAF indication', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET064');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('low');
+    });
+
+    it('should not flag when Front Door is present', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://myapi.azure-api.net' },
+          { url: 'https://myapi.azurefd.net' }
+        ],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET064');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET065 - Azure APIM OAuth2 Scopes', () => {
+    it('should detect Entra ID OAuth2 without scopes on endpoint', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        components: {
+          securitySchemes: {
+            entra: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize',
+                  tokenUrl: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
+                  scopes: { 'api://app/read': 'Read', 'api://app/write': 'Write' }
+                }
+              }
+            }
+          }
+        },
+        paths: {
+          '/data': {
+            get: {
+              security: [{ entra: [] }],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET065');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when scopes are specified', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        components: {
+          securitySchemes: {
+            entra: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize',
+                  tokenUrl: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/token',
+                  scopes: { 'api://app/read': 'Read' }
+                }
+              }
+            }
+          }
+        },
+        paths: {
+          '/data': {
+            get: {
+              security: [{ entra: ['api://app/read'] }],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET065');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag non-Azure OAuth2', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [{ url: 'https://myapi.azure-api.net' }],
+        components: {
+          securitySchemes: {
+            auth0: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://example.auth0.com/authorize',
+                  tokenUrl: 'https://example.auth0.com/oauth/token',
+                  scopes: { read: 'Read' }
+                }
+              }
+            }
+          }
+        },
+        paths: {
+          '/data': {
+            get: {
+              security: [{ auth0: [] }],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET065');
+      expect(finding).toBeUndefined();
+    });
+  });
+
   describe('Rule count', () => {
-    it('should have at least 55 rules', () => {
-      expect(rules.length).toBeGreaterThanOrEqual(55);
+    it('should have at least 65 rules', () => {
+      expect(rules.length).toBeGreaterThanOrEqual(65);
     });
   });
 });

@@ -1,0 +1,110 @@
+openapi: '3.0.0'
+info:
+  title: Azure APIM Example API
+  version: '1.0.0'
+  description: Example API managed by Azure API Management - demonstrates various security configurations
+servers:
+  - url: https://contoso-api.azure-api.net
+    description: Azure APIM Gateway
+  - url: https://contoso-api.azure-api.net/v2
+    description: Azure APIM v2
+
+security: []
+
+components:
+  securitySchemes:
+    # Subscription key in query (bad practice)
+    subscriptionKeyQuery:
+      type: apiKey
+      in: query
+      name: subscription-key
+    # OAuth2 with Entra ID
+    entraId:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/authorize
+          tokenUrl: https://login.microsoftonline.com/contoso.onmicrosoft.com/oauth2/v2.0/token
+          scopes:
+            'api://contoso-api/read': Read access
+            'api://contoso-api/write': Write access
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+paths:
+  /users:
+    get:
+      summary: List users
+      operationId: listUsers
+      # No security defined - will trigger APIVET058
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      summary: Create user
+      operationId: createUser
+      security:
+        - entraId: []  # No scopes! Triggers APIVET065
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Bad Request
+
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      operationId: getUser
+      security:
+        - entraId:
+            - 'api://contoso-api/read'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: Not Found
+
+  /admin/config:
+    get:
+      summary: Get API configuration
+      operationId: getConfig
+      # No security - admin endpoint without auth!
+      responses:
+        '200':
+          description: Configuration
