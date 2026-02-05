@@ -129,6 +129,160 @@ describe('ApiVet Rules', () => {
       expect(sensitiveFindings.some(f => f.title.includes('password'))).toBe(true);
       expect(sensitiveFindings.some(f => f.title.includes('ssn'))).toBe(true);
     });
+
+    // FB5: $ref resolution
+    it('should detect sensitive properties via $ref', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          schemas: {
+            User: {
+              type: 'object',
+              properties: {
+                id: { type: 'integer' },
+                password: { type: 'string' },
+                email: { type: 'string' }
+              }
+            }
+          }
+        },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        $ref: '#/components/schemas/User'
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const sensitiveFindings = findings.filter(f => f.ruleId === 'APIVET004');
+      
+      expect(sensitiveFindings.some(f => f.title.includes('password'))).toBe(true);
+    });
+
+    // FB5: Nested schema traversal
+    it('should detect sensitive properties in nested schemas', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  content: {
+                    'application/json': {
+                      schema: {
+                        type: 'object',
+                        properties: {
+                          data: {
+                            type: 'object',
+                            properties: {
+                              credentials: {
+                                type: 'object',
+                                properties: {
+                                  secret_key: { type: 'string' }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const sensitiveFindings = findings.filter(f => f.ruleId === 'APIVET004');
+      
+      expect(sensitiveFindings.some(f => f.title.includes('secret_key'))).toBe(true);
+    });
+
+    // FB6: JSON-compatible content types
+    it('should detect sensitive properties in application/hal+json', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  content: {
+                    'application/hal+json': {
+                      schema: {
+                        type: 'object',
+                        properties: {
+                          api_key: { type: 'string' }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const sensitiveFindings = findings.filter(f => f.ruleId === 'APIVET004');
+      
+      expect(sensitiveFindings.some(f => f.title.includes('api_key'))).toBe(true);
+    });
+
+    it('should detect sensitive properties in application/vnd.api+json', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/users': {
+            get: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  content: {
+                    'application/vnd.api+json': {
+                      schema: {
+                        type: 'object',
+                        properties: {
+                          credit_card: { type: 'string' }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const sensitiveFindings = findings.filter(f => f.ruleId === 'APIVET004');
+      
+      expect(sensitiveFindings.some(f => f.title.includes('credit_card'))).toBe(true);
+    });
   });
 
   describe('APIVET006 - Pagination', () => {

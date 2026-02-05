@@ -237,8 +237,15 @@ async function scanFile(
   return endpoints;
 }
 
-function detectFramework(content: string): FrameworkPattern[] {
+/**
+ * FB4: Detect framework by analyzing import/require statements
+ * Uses stripped content to avoid false positives from comments
+ */
+function detectFramework(rawContent: string): FrameworkPattern[] {
   const detected: FrameworkPattern[] = [];
+  
+  // Strip comments to avoid false positives (e.g., "// import express" in a fastify file)
+  const { stripped: content } = stripComments(rawContent);
 
   if (/require\s*\(\s*['"`]express['"`]\s*\)|from\s+['"`]express['"`]/i.test(content)) {
     const framework = FRAMEWORKS.find(f => f.name === 'express');

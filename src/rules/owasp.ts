@@ -14,7 +14,9 @@ import {
   hasGlobalSecurity,
   isHttpUrl,
   isLocalhostUrl,
-  createFinding
+  createFinding,
+  getJsonSchemasFromContent,
+  collectSchemaProperties
 } from './utils.js';
 
 export const owaspRules: Rule[] = [
@@ -130,29 +132,7 @@ export const owaspRules: Rule[] = [
     check: (spec, filePath) => {
       const findings: Finding[] = [];
       const paths = spec.paths || {};
-
-      const checkSchema = (schema: any, endpoint: string, method: string): void => {
-        if (!schema?.properties) return;
-
-        for (const propName of Object.keys(schema.properties)) {
-          const lower = propName.toLowerCase();
-          if (SENSITIVE_PROPERTY_PATTERNS.some(p => lower.includes(p))) {
-            findings.push(createFinding(
-              'APIVET004',
-              `Potentially sensitive property "${propName}" in response`,
-              `Response includes "${propName}" which may contain sensitive data.`,
-              'medium',
-              {
-                owaspCategory: 'API3:2023',
-                filePath,
-                endpoint,
-                method,
-                remediation: 'Implement response filtering based on user authorization level.'
-              }
-            ));
-          }
-        }
-      };
+      const reportedProps = new Set<string>(); // Avoid duplicate findings for same property
 
       for (const [path, pathItem] of Object.entries(paths)) {
         for (const method of ['get', 'post', 'put', 'patch'] as const) {
@@ -160,8 +140,35 @@ export const owaspRules: Rule[] = [
           if (!operation?.responses) continue;
 
           for (const response of Object.values(operation.responses)) {
-            const schema = response.content?.['application/json']?.schema;
-            if (schema) checkSchema(schema, path, method.toUpperCase());
+            // FB5 & FB6: Get all JSON schemas (application/json, application/*+json, etc.)
+            const schemas = getJsonSchemasFromContent(response.content);
+            
+            for (const schema of schemas) {
+              // FB5: Collect all properties including $ref resolved and nested
+              const allProps = collectSchemaProperties(schema, spec);
+              
+              for (const propName of allProps) {
+                const lower = propName.toLowerCase();
+                const findingKey = `${path}:${method}:${propName}`;
+                
+                if (SENSITIVE_PROPERTY_PATTERNS.some(p => lower.includes(p)) && !reportedProps.has(findingKey)) {
+                  reportedProps.add(findingKey);
+                  findings.push(createFinding(
+                    'APIVET004',
+                    `Potentially sensitive property "${propName}" in response`,
+                    `Response includes "${propName}" which may contain sensitive data.`,
+                    'medium',
+                    {
+                      owaspCategory: 'API3:2023',
+                      filePath,
+                      endpoint: path,
+                      method: method.toUpperCase(),
+                      remediation: 'Implement response filtering based on user authorization level.'
+                    }
+                  ));
+                }
+              }
+            }
           }
         }
       }

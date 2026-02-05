@@ -139,7 +139,7 @@ export async function checkEndpoint(
   options: CheckOptions = {}
 ): Promise<CheckResult> {
   const {
-    headers: checkHeaders = false,  // FB1: Default to false
+    headers: checkHeaders = false,
     auth,
     authToken,
     authHeader,
@@ -148,27 +148,47 @@ export async function checkEndpoint(
 
   const findings: Finding[] = [];
 
+  // Validate URL first
+  let parsedUrl: URL;
   try {
-    // Validate URL
-    const parsedUrl = new URL(url);
+    parsedUrl = new URL(url);
+  } catch {
+    return {
+      url,
+      status: 'error',
+      findings,
+      error: `Invalid URL: ${url}`
+    };
+  }
 
-    // Check for HTTP vs HTTPS
-    if (parsedUrl.protocol === 'http:' &&
-        !parsedUrl.hostname.includes('localhost') &&
-        !parsedUrl.hostname.includes('127.0.0.1')) {
-      findings.push({
-        ruleId: 'APIVET-LIVE-001',
-        title: 'Non-HTTPS endpoint',
-        description: `The endpoint ${url} uses HTTP instead of HTTPS. Data transmitted is not encrypted.`,
-        severity: 'high',
-        remediation: 'Use HTTPS for all API endpoints to encrypt data in transit.'
-      });
-    }
+  // FB2: Reject non-HTTP/HTTPS protocols
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    return {
+      url,
+      status: 'error',
+      findings,
+      error: `Unsupported protocol: ${parsedUrl.protocol} (only http: and https: are supported)`
+    };
+  }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+  // Check for HTTP vs HTTPS (warning, not error)
+  if (parsedUrl.protocol === 'http:' &&
+      !parsedUrl.hostname.includes('localhost') &&
+      !parsedUrl.hostname.includes('127.0.0.1')) {
+    findings.push({
+      ruleId: 'APIVET-LIVE-001',
+      title: 'Non-HTTPS endpoint',
+      description: `The endpoint ${url} uses HTTP instead of HTTPS. Data transmitted is not encrypted.`,
+      severity: 'high',
+      remediation: 'Use HTTPS for all API endpoints to encrypt data in transit.'
+    });
+  }
 
-    // FB2: Build request headers including authentication
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    // Build request headers including authentication
     const requestHeaders: Record<string, string> = {
       'User-Agent': 'ApiVet/1.0 Security Scanner',
       ...buildAuthHeaders(auth, authToken, authHeader)
@@ -181,8 +201,6 @@ export async function checkEndpoint(
       headers: requestHeaders
     });
     const responseTime = Date.now() - startTime;
-
-    clearTimeout(timeoutId);
 
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
@@ -247,5 +265,8 @@ export async function checkEndpoint(
       findings,
       error: friendlyError
     };
+  } finally {
+    // FB1: Always clear timeout to prevent resource leak
+    clearTimeout(timeoutId);
   }
 }

@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('apivet')
   .description('API Security Scanner - Static and runtime analysis for API security posture')
-  .version('0.2.0');
+  .version('0.2.1');
 
 program
   .command('scan <path>')
@@ -27,7 +27,7 @@ program
   .option('--headers', 'Check security headers (disabled by default)')
   .option('--auth <type>', 'Authentication type: basic, bearer, apikey')
   .option('--auth-token <token>', 'Authentication token/key value')
-  .option('--auth-header <name>', 'Custom header name for auth (default: Authorization)')
+  .option('--auth-header <name>', 'Custom header name (default: Authorization for bearer/basic, X-API-Key for apikey)')
   .option('--timeout <ms>', 'Request timeout in milliseconds (default: 10000, min: 1)')
   .option('-j, --json', 'Output as JSON')
   .action(checkCommand);

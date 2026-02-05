@@ -146,3 +146,114 @@ export function isLocalhostUrl(url: string): boolean {
 export function isHttpUrl(url: string): boolean {
   return url.startsWith('http://');
 }
+
+/**
+ * FB6: Check if a Content-Type is JSON-compatible
+ * Handles: application/json, application/hal+json, application/vnd.api+json, text/json, etc.
+ */
+export function isJsonContentType(contentType: string): boolean {
+  const lower = contentType.toLowerCase();
+  return (
+    lower === 'application/json' ||
+    lower === 'text/json' ||
+    /^application\/[a-z0-9.+-]*\+json$/i.test(lower) ||  // application/*+json
+    /^application\/vnd\.[a-z0-9.+-]*\+json$/i.test(lower)  // application/vnd.*+json
+  );
+}
+
+/**
+ * FB6: Get all JSON schemas from a response content object
+ * Returns schemas for any JSON-compatible content types
+ */
+export function getJsonSchemasFromContent(content: Record<string, { schema?: unknown }> | undefined): unknown[] {
+  if (!content) return [];
+  
+  const schemas: unknown[] = [];
+  for (const [contentType, mediaType] of Object.entries(content)) {
+    if (isJsonContentType(contentType) && mediaType.schema) {
+      schemas.push(mediaType.schema);
+    }
+  }
+  return schemas;
+}
+
+/**
+ * FB5: Resolve $ref in schema to actual schema object
+ * Handles local references like #/components/schemas/User
+ */
+export function resolveRef(ref: string, spec: OpenApiSpec): unknown {
+  if (!ref.startsWith('#/')) return undefined;
+  
+  const parts = ref.slice(2).split('/');
+  let current: unknown = spec;
+  
+  for (const part of parts) {
+    if (current && typeof current === 'object' && part in current) {
+      current = (current as Record<string, unknown>)[part];
+    } else {
+      return undefined;
+    }
+  }
+  
+  return current;
+}
+
+/**
+ * FB5: Recursively collect all property names from a schema
+ * Handles $ref, nested objects, arrays, allOf/oneOf/anyOf
+ * Uses visited set to prevent infinite loops on circular references
+ */
+export function collectSchemaProperties(
+  schema: unknown,
+  spec: OpenApiSpec,
+  visited: Set<string> = new Set()
+): string[] {
+  if (!schema || typeof schema !== 'object') return [];
+  
+  const schemaObj = schema as Record<string, unknown>;
+  const properties: string[] = [];
+  
+  // Handle $ref
+  if (schemaObj.$ref && typeof schemaObj.$ref === 'string') {
+    if (visited.has(schemaObj.$ref)) {
+      return []; // Circular reference, stop recursion
+    }
+    visited.add(schemaObj.$ref);
+    const resolved = resolveRef(schemaObj.$ref, spec);
+    if (resolved) {
+      properties.push(...collectSchemaProperties(resolved, spec, visited));
+    }
+    return properties;
+  }
+  
+  // Collect direct properties
+  if (schemaObj.properties && typeof schemaObj.properties === 'object') {
+    for (const propName of Object.keys(schemaObj.properties)) {
+      properties.push(propName);
+      // Also collect nested properties
+      const propSchema = (schemaObj.properties as Record<string, unknown>)[propName];
+      properties.push(...collectSchemaProperties(propSchema, spec, visited));
+    }
+  }
+  
+  // Handle array items
+  if (schemaObj.items) {
+    properties.push(...collectSchemaProperties(schemaObj.items, spec, visited));
+  }
+  
+  // Handle allOf/oneOf/anyOf
+  for (const combiner of ['allOf', 'oneOf', 'anyOf'] as const) {
+    if (Array.isArray(schemaObj[combiner])) {
+      for (const subSchema of schemaObj[combiner]) {
+        properties.push(...collectSchemaProperties(subSchema, spec, visited));
+      }
+    }
+  }
+  
+  // Handle additionalProperties if it's a schema
+  if (schemaObj.additionalProperties && typeof schemaObj.additionalProperties === 'object') {
+    properties.push(...collectSchemaProperties(schemaObj.additionalProperties, spec, visited));
+  }
+  
+  return properties;
+}

@@ -121,6 +121,16 @@ describe('Scanner', () => {
       expect(results.length).toBeGreaterThanOrEqual(3);
     });
 
+    // FB3: scanOpenApiSpec should handle non-existent paths gracefully
+    it('should return error result for non-existent path instead of throwing', async () => {
+      const results = await scanOpenApiSpec('/nonexistent/path/to/spec.yaml');
+      
+      expect(results.length).toBe(1);
+      expect(results[0].error).toBeDefined();
+      expect(results[0].error).toContain('not found');
+      expect(results[0].findings).toEqual([]);
+    });
+
     it('should filter by severity', async () => {
       // Create a spec with known findings
       const specWithIssues = {

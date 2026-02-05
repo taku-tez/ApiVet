@@ -18,10 +18,17 @@ export async function checkCommand(
   const { headers = false, auth, authToken, authHeader, timeout = '10000', json } = options;
 
   // Validate URL
+  let parsedUrl: URL;
   try {
-    new URL(url);
+    parsedUrl = new URL(url);
   } catch {
     console.error(`Error: Invalid URL: ${url}`);
+    process.exit(2);
+  }
+
+  // FB2: Only allow HTTP/HTTPS protocols
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    console.error(`Error: Unsupported protocol: ${parsedUrl.protocol} (only http: and https: are supported)`);
     process.exit(2);
   }
 

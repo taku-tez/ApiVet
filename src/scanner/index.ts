@@ -89,7 +89,21 @@ export async function scanOpenApiSpec(
   const { recursive = false, severity } = options;
   const results: ScanResult[] = [];
   
-  const stat = fs.statSync(targetPath);
+  // FB3: Handle non-existent paths gracefully instead of throwing
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(targetPath);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // Return error result instead of throwing - better for API/library usage
+    return [{
+      file: targetPath,
+      findings: [],
+      error: errorMessage.includes('ENOENT')
+        ? `Path not found: ${targetPath}`
+        : `Cannot access path: ${errorMessage}`
+    }];
+  }
   
   if (stat.isFile()) {
     const result = await scanFile(targetPath);
