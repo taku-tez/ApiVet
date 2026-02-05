@@ -144,13 +144,19 @@ async function scanApimService(
           if (response.ok) {
             spec = await response.json() as OpenApiSpec;
           } else {
-            spec = createMinimalSpec(api, serviceName);
+            const reason = `HTTP ${response.status} ${response.statusText}`;
+            console.warn(`Warning: Full spec export failed for API "${api.displayName || api.name}" (${reason}). Using minimal spec.`);
+            spec = createMinimalSpec(api, serviceName, reason);
           }
-        } catch {
-          spec = createMinimalSpec(api, serviceName);
+        } catch (fetchErr) {
+          const reason = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+          console.warn(`Warning: Full spec export failed for API "${api.displayName || api.name}" (${reason}). Using minimal spec.`);
+          spec = createMinimalSpec(api, serviceName, reason);
         }
       } else {
-        spec = createMinimalSpec(api, serviceName);
+        const reason = 'No export link returned';
+        console.warn(`Warning: Full spec export failed for API "${api.displayName || api.name}" (${reason}). Using minimal spec.`);
+        spec = createMinimalSpec(api, serviceName, reason);
       }
 
       // Add Azure-specific metadata
@@ -192,13 +198,18 @@ async function scanApimService(
 /**
  * Create a minimal OpenAPI spec when export fails
  */
-function createMinimalSpec(api: any, serviceName: string): OpenApiSpec {
+function createMinimalSpec(api: any, serviceName: string, failureReason?: string): OpenApiSpec {
+  const baseDescription = api.description || `Azure API Management API: ${api.name}`;
+  const description = failureReason
+    ? `Warning: Full spec export failed (${failureReason}). Using minimal spec. Original: ${baseDescription}`
+    : baseDescription;
+
   return {
     openapi: '3.0.3',
     info: {
       title: api.displayName || api.name || 'Azure APIM API',
       version: api.apiVersion || '1.0.0',
-      description: api.description || `Azure API Management API: ${api.name}`
+      description
     },
     servers: [{
       url: `https://${serviceName}.azure-api.net/${api.path || ''}`,
@@ -207,6 +218,7 @@ function createMinimalSpec(api: any, serviceName: string): OpenApiSpec {
     paths: {},
     components: {
       securitySchemes: {}
-    }
+    },
+    ...(failureReason ? { 'x-apivet-export-warning': `Full spec export failed: ${failureReason}` } : {})
   };
 }

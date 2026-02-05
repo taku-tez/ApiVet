@@ -2440,9 +2440,365 @@ describe('ApiVet Rules', () => {
     });
   });
 
+  // ============================================
+  // OWASP API6:2023 - Unrestricted Access to Sensitive Business Flows
+  // ============================================
+
+  describe('APIVET084 - Sensitive business flow without rate limiting', () => {
+    it('should detect login endpoint without rate limiting', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/login': {
+            post: {
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET084');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+      expect(finding?.owaspCategory).toBe('API6:2023');
+    });
+
+    it('should not flag when 429 response is defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/login': {
+            post: {
+              responses: {
+                '200': { description: 'OK' },
+                '429': { description: 'Too Many Requests' }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET084');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when rate limit headers are defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/register': {
+            post: {
+              responses: {
+                '200': {
+                  description: 'OK',
+                  headers: {
+                    'X-RateLimit-Limit': { schema: { type: 'integer' } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET084');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET085 - No CAPTCHA/bot protection indication', () => {
+    it('should detect signup without bot protection', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/signup': {
+            post: {
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET085');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+    });
+
+    it('should not flag when captcha is mentioned in description', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/signup': {
+            post: {
+              description: 'User registration endpoint. Requires reCAPTCHA verification.',
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET085');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when captcha parameter exists', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/register': {
+            post: {
+              parameters: [
+                { name: 'captcha_token', in: 'query', schema: { type: 'string' } }
+              ],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET085');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET086 - Signup/registration without duplicate check', () => {
+    it('should detect registration without 409 response', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/signup': {
+            post: {
+              responses: {
+                '200': { description: 'OK' },
+                '400': { description: 'Bad Request' }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET086');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('low');
+    });
+
+    it('should not flag when 409 Conflict is defined', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/register': {
+            post: {
+              responses: {
+                '200': { description: 'OK' },
+                '409': { description: 'User already exists' }
+              }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET086');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  // ============================================
+  // OWASP API10:2023 - Unsafe Consumption of APIs
+  // ============================================
+
+  describe('APIVET087 - External API call without timeout indication', () => {
+    it('should detect webhook URL param without timeout mention', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/subscribe': {
+            post: {
+              parameters: [
+                { name: 'callback_url', in: 'query', schema: { type: 'string' } }
+              ],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET087');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('medium');
+      expect(finding?.owaspCategory).toBe('API10:2023');
+    });
+
+    it('should not flag when timeout is mentioned in description', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/subscribe': {
+            post: {
+              description: 'Subscribe to events. Webhook calls have a 30 second timeout.',
+              parameters: [
+                { name: 'webhook_url', in: 'query', schema: { type: 'string' } }
+              ],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET087');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag non-callback endpoints', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/users': {
+            get: {
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET087');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET088 - Webhook/callback without signature verification', () => {
+    it('should detect webhook endpoint without signature', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/webhook': {
+            post: {
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET088');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should not flag when signature header param exists', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/webhook': {
+            post: {
+              parameters: [
+                { name: 'X-Hub-Signature', in: 'header', schema: { type: 'string' } }
+              ],
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET088');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag when signature verification is mentioned', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/api/callback': {
+            post: {
+              description: 'Webhook callback. Verify HMAC-SHA256 signature before processing.',
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET088');
+      expect(finding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET089 - Third-party API integration without TLS', () => {
+    it('should detect HTTP URL for external API', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'http://partner.api.example.com' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET089');
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe('high');
+    });
+
+    it('should not flag HTTPS URLs', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://api.partner.com' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET089');
+      expect(finding).toBeUndefined();
+    });
+
+    it('should not flag localhost HTTP', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'http://localhost:3000/api' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const finding = findings.find(f => f.ruleId === 'APIVET089');
+      expect(finding).toBeUndefined();
+    });
+  });
+
   describe('Rule count', () => {
-    it('should have at least 83 rules', () => {
-      expect(rules.length).toBeGreaterThanOrEqual(83);
+    it('should have at least 89 rules', () => {
+      expect(rules.length).toBeGreaterThanOrEqual(89);
     });
   });
 });

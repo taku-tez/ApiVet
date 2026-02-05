@@ -86,5 +86,53 @@ describe('Checker', () => {
         expect(result.headers).toBeUndefined();
       }, 5000);
     });
+
+    // Custom headers option
+    describe('customHeaders option', () => {
+      it('should accept custom headers in Name:Value format', async () => {
+        // Test that custom headers are accepted (we can't easily verify they're sent)
+        const result = await checkEndpoint('http://localhost:99999/', {
+          timeout: 100,
+          customHeaders: ['X-Custom-Header: test-value', 'X-Another: value2']
+        });
+        
+        // Should not throw, just fail to connect
+        expect(result.status).toBe('error');
+        expect(result.error).not.toContain('header');
+      }, 5000);
+
+      it('should handle headers with spaces around colon', async () => {
+        const result = await checkEndpoint('http://localhost:99999/', {
+          timeout: 100,
+          customHeaders: ['X-Spaced : value with spaces']
+        });
+        
+        expect(result.status).toBe('error');
+      }, 5000);
+    });
+
+    // Body option
+    describe('body option', () => {
+      it('should accept body with POST method', async () => {
+        const result = await checkEndpoint('http://localhost:99999/', {
+          timeout: 100,
+          method: 'POST',
+          body: JSON.stringify({ test: 'data' })
+        });
+        
+        expect(result.status).toBe('error');
+        expect(result.error).not.toContain('body');
+      }, 5000);
+
+      it('should accept body with PUT method', async () => {
+        const result = await checkEndpoint('http://localhost:99999/', {
+          timeout: 100,
+          method: 'PUT',
+          body: '{"key": "value"}'
+        });
+        
+        expect(result.status).toBe('error');
+      }, 5000);
+    });
   });
 });

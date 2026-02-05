@@ -15,6 +15,8 @@ export interface CheckOptions {
   auth?: 'basic' | 'bearer' | 'apikey';
   authToken?: string;
   authHeader?: string;
+  customHeaders?: string[];
+  body?: string;
   timeout?: number;
   method?: string;
 }
@@ -67,6 +69,34 @@ const SECURITY_HEADERS: Array<{
     severity: 'medium',
     description: 'Cache-Control header is missing - API responses may be cached inappropriately',
     remediation: 'Add Cache-Control: no-store, no-cache for sensitive API endpoints'
+  },
+  {
+    name: 'permissions-policy',
+    required: false,
+    severity: 'low',
+    description: 'Permissions-Policy header is missing - browser features may be unrestricted',
+    remediation: 'Add Permissions-Policy header to restrict access to browser features (camera, microphone, geolocation, etc.)'
+  },
+  {
+    name: 'referrer-policy',
+    required: false,
+    severity: 'low',
+    description: 'Referrer-Policy header is missing - full URL may be sent in Referer header',
+    remediation: 'Add Referrer-Policy: strict-origin-when-cross-origin or no-referrer header'
+  },
+  {
+    name: 'cross-origin-opener-policy',
+    required: false,
+    severity: 'low',
+    description: 'Cross-Origin-Opener-Policy header is missing',
+    remediation: 'Add Cross-Origin-Opener-Policy: same-origin header to isolate browsing context'
+  },
+  {
+    name: 'cross-origin-resource-policy',
+    required: false,
+    severity: 'low',
+    description: 'Cross-Origin-Resource-Policy header is missing',
+    remediation: 'Add Cross-Origin-Resource-Policy: same-origin header to prevent cross-origin reads'
   }
 ];
 
@@ -98,6 +128,20 @@ const DANGEROUS_HEADERS = [
     severity: 'medium' as Severity,
     description: 'CORS allows credentials - ensure this is intentional and origin is restricted',
     remediation: 'Verify that allowing credentials is necessary and that origin is properly restricted'
+  },
+  {
+    name: 'x-aspnet-version',
+    pattern: /.+/,
+    severity: 'low' as Severity,
+    description: 'X-AspNet-Version header exposes ASP.NET version',
+    remediation: 'Remove the X-AspNet-Version header'
+  },
+  {
+    name: 'x-debug-token',
+    pattern: /.+/,
+    severity: 'medium' as Severity,
+    description: 'Debug token header detected - may expose debugging information',
+    remediation: 'Remove debug headers in production'
   }
 ];
 
@@ -135,6 +179,26 @@ function buildAuthHeaders(
   }
 }
 
+/**
+ * Parse custom headers from "Name: Value" or "Name:Value" format
+ */
+function parseCustomHeaders(customHeaders?: string[]): Record<string, string> {
+  if (!customHeaders || customHeaders.length === 0) return {};
+  
+  const parsed: Record<string, string> = {};
+  for (const header of customHeaders) {
+    const colonIndex = header.indexOf(':');
+    if (colonIndex > 0) {
+      const name = header.substring(0, colonIndex).trim();
+      const value = header.substring(colonIndex + 1).trim();
+      if (name) {
+        parsed[name] = value;
+      }
+    }
+  }
+  return parsed;
+}
+
 export async function checkEndpoint(
   url: string,
   options: CheckOptions = {}
@@ -144,6 +208,8 @@ export async function checkEndpoint(
     auth,
     authToken,
     authHeader,
+    customHeaders,
+    body,
     timeout = 10000,
     method = 'GET'
   } = options;
@@ -190,18 +256,31 @@ export async function checkEndpoint(
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    // Build request headers including authentication
+    // Build request headers including authentication and custom headers
     const requestHeaders: Record<string, string> = {
       'User-Agent': 'ApiVet/1.0 Security Scanner',
-      ...buildAuthHeaders(auth, authToken, authHeader)
+      ...buildAuthHeaders(auth, authToken, authHeader),
+      ...parseCustomHeaders(customHeaders)
     };
 
-    const startTime = Date.now();
-    const response = await fetch(url, {
+    // Build fetch options
+    const fetchOptions: RequestInit = {
       method,
       signal: controller.signal,
       headers: requestHeaders
-    });
+    };
+
+    // Include body for methods that support it
+    if (body && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) {
+      fetchOptions.body = body;
+      // Set Content-Type if not already set
+      if (!requestHeaders['Content-Type'] && !requestHeaders['content-type']) {
+        requestHeaders['Content-Type'] = 'application/json';
+      }
+    }
+
+    const startTime = Date.now();
+    const response = await fetch(url, fetchOptions);
     const responseTime = Date.now() - startTime;
 
     const responseHeaders: Record<string, string> = {};
@@ -212,7 +291,7 @@ export async function checkEndpoint(
     if (checkHeaders) {
       const isHttps = parsedUrl.protocol === 'https:';
       
-      // Check for missing security headers
+      // Check for missing security headers (both required and optional)
       for (const header of SECURITY_HEADERS) {
         // FB4: Skip HSTS check for HTTP endpoints (HSTS only applies to HTTPS)
         if (header.name === 'strict-transport-security' && !isHttps) {
@@ -220,15 +299,14 @@ export async function checkEndpoint(
         }
         
         if (!responseHeaders[header.name]) {
-          if (header.required) {
-            findings.push({
-              ruleId: `APIVET-LIVE-HDR-${header.name.toUpperCase().replace(/-/g, '_')}`,
-              title: `Missing security header: ${header.name}`,
-              description: header.description,
-              severity: header.severity,
-              remediation: header.remediation
-            });
-          }
+          // Report all missing security headers with their defined severity
+          findings.push({
+            ruleId: `APIVET-LIVE-HDR-${header.name.toUpperCase().replace(/-/g, '_')}`,
+            title: `Missing security header: ${header.name}`,
+            description: header.description,
+            severity: header.severity,
+            remediation: header.remediation
+          });
         }
       }
 

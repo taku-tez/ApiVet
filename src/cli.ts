@@ -8,6 +8,11 @@ import { cloudAwsCommand, cloudGcpCommand, cloudAzureCommand } from './commands/
 
 const program = new Command();
 
+// Helper function to collect repeatable options
+function collect(value: string, previous: string[]): string[] {
+  return previous.concat([value]);
+}
+
 program
   .name('apivet')
   .description('API Security Scanner - Static and runtime analysis for API security posture')
@@ -34,6 +39,8 @@ program
   .option('--auth <type>', 'Authentication type: basic, bearer, apikey')
   .option('--auth-token <token>', 'Authentication token/key value')
   .option('--auth-header <name>', 'Custom header name (default: Authorization for bearer/basic, X-API-Key for apikey)')
+  .option('-H, --header <header>', 'Custom request header (format: Name:Value, repeatable)', collect, [])
+  .option('-d, --data <body>', 'Request body data')
   .option('--timeout <ms>', 'Request timeout in milliseconds (default: 10000, min: 1)')
   .option('-j, --json', 'Output as JSON')
   .option('-o, --output <file>', 'Write results to file')

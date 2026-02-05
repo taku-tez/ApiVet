@@ -7,6 +7,8 @@ interface CheckCommandOptions {
   auth?: string;
   authToken?: string;
   authHeader?: string;
+  header?: string[];
+  data?: string;
   timeout?: string;
   method?: string;
   json?: boolean;
@@ -17,7 +19,7 @@ export async function checkCommand(
   url: string,
   options: CheckCommandOptions
 ): Promise<void> {
-  const { headers = false, auth, authToken, authHeader, timeout = '10000', method = 'GET', json, output } = options;
+  const { headers = false, auth, authToken, authHeader, header: customHeaders, data, timeout = '10000', method = 'GET', json, output } = options;
 
   // Validate URL
   let parsedUrl: URL;
@@ -78,6 +80,8 @@ export async function checkCommand(
       auth: auth as 'basic' | 'bearer' | 'apikey' | undefined,
       authToken,
       authHeader,
+      customHeaders,
+      body: data,
       timeout: timeoutMs,
       method: normalizedMethod
     });

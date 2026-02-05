@@ -40,6 +40,34 @@ export interface DiscoveredApi {
 }
 
 /**
+ * Build server URLs for a REST API based on its endpoint configuration
+ */
+function buildRestApiServers(apiId: string, api: RestApi): Array<{ url: string; description?: string; 'x-amazon-apigateway-endpoint-configuration'?: unknown }> {
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const baseUrl = `https://${apiId}.execute-api.${region}.amazonaws.com`;
+  const endpointTypes = api.endpointConfiguration?.types || [];
+
+  if (endpointTypes.length === 0) {
+    // Default to EDGE if no endpoint type specified
+    return [{ url: baseUrl }];
+  }
+
+  return endpointTypes.map((type) => {
+    const server: { url: string; description?: string; 'x-amazon-apigateway-endpoint-configuration'?: unknown } = {
+      url: baseUrl,
+      description: `${type} endpoint`
+    };
+    if (type === 'PRIVATE') {
+      server['x-amazon-apigateway-endpoint-configuration'] = {
+        types: ['PRIVATE'],
+        vpcEndpointIds: api.endpointConfiguration?.vpcEndpointIds || []
+      };
+    }
+    return server;
+  });
+}
+
+/**
  * Convert AWS API Gateway REST API to OpenAPI spec
  */
 async function convertRestApiToOpenApi(
@@ -70,9 +98,7 @@ async function convertRestApiToOpenApi(
       version: api.version || '1.0.0',
       description: api.description || `AWS API Gateway REST API: ${apiId}`
     },
-    servers: api.endpointConfiguration?.types?.includes('EDGE')
-      ? [{ url: `https://${apiId}.execute-api.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com` }]
-      : [],
+    servers: buildRestApiServers(apiId, api),
     paths: {},
     components: {
       securitySchemes: {}
@@ -285,6 +311,99 @@ async function convertHttpApiToOpenApi(
 }
 
 /**
+ * Convert AWS API Gateway WebSocket API (V2) to OpenAPI spec
+ */
+async function convertWebSocketApiToOpenApi(
+  client: ApiGatewayV2Client,
+  api: Api
+): Promise<OpenApiSpec> {
+  const apiId = api.ApiId!;
+
+  // Get routes
+  const routesResponse = await client.send(new GetRoutesCommand({
+    ApiId: apiId,
+    MaxResults: '500'
+  }));
+  const routes = routesResponse.Items || [];
+
+  // Get authorizers
+  const authorizersResponse = await client.send(new GetAuthorizersV2Command({
+    ApiId: apiId
+  }));
+  const authorizers = authorizersResponse.Items || [];
+
+  // Build OpenAPI spec
+  const spec: OpenApiSpec = {
+    openapi: '3.0.3',
+    info: {
+      title: api.Name || 'AWS API Gateway WebSocket API',
+      version: api.Version || '1.0.0',
+      description: api.Description || `AWS API Gateway WebSocket API: ${apiId}`
+    },
+    servers: api.ApiEndpoint ? [{ url: api.ApiEndpoint }] : [],
+    paths: {},
+    components: {
+      securitySchemes: {}
+    },
+    'x-amazon-apigateway-api-id': apiId,
+    'x-amazon-apigateway-protocol': 'WEBSOCKET'
+  };
+
+  // Add authorizers
+  for (const auth of authorizers) {
+    if (auth.Name) {
+      if (auth.AuthorizerType === 'REQUEST') {
+        spec.components!.securitySchemes![auth.Name] = {
+          type: 'apiKey',
+          in: 'header',
+          name: 'Authorization',
+          description: 'Lambda Authorizer (WebSocket)'
+        };
+      }
+    }
+  }
+
+  // Build paths from routes
+  // WebSocket routes use route keys like $connect, $disconnect, $default, or custom action names
+  for (const route of routes) {
+    if (!route.RouteKey) continue;
+
+    const path = `/${route.RouteKey.replace(/^\$/, '_ws_')}`;
+
+    const operation: Record<string, unknown> = {
+      summary: `WebSocket route: ${route.RouteKey}`,
+      description: `WebSocket route key: ${route.RouteKey}`,
+      responses: {
+        '200': { description: 'Success' }
+      },
+      'x-amazon-apigateway-websocket-route-key': route.RouteKey
+    };
+
+    // Add authorization info
+    if (route.AuthorizationType === 'NONE') {
+      operation['x-amazon-apigateway-auth'] = { type: 'NONE' };
+    } else if (route.AuthorizationType === 'AWS_IAM') {
+      operation.security = [{ 'aws-iam': [] }];
+      spec.components!.securitySchemes!['aws-iam'] = {
+        type: 'apiKey',
+        in: 'header',
+        name: 'Authorization',
+        description: 'AWS IAM authentication'
+      };
+    } else if (route.AuthorizationType === 'CUSTOM' && route.AuthorizerId) {
+      const authName = authorizers.find(a => a.AuthorizerId === route.AuthorizerId)?.Name || 'custom-auth';
+      operation.security = [{ [authName]: [] }];
+    }
+
+    spec.paths![path] = {
+      get: operation as any
+    };
+  }
+
+  return spec;
+}
+
+/**
  * Discover all API Gateway APIs in an AWS account/region
  */
 export async function discoverAwsApis(
@@ -334,19 +453,29 @@ export async function discoverAwsApis(
     
     for (const api of httpApisResponse.Items || []) {
       if (options.apiId && api.ApiId !== options.apiId) continue;
-      if (api.ProtocolType === 'WEBSOCKET') continue; // Skip WebSocket APIs for now
       
       try {
-        const spec = await convertHttpApiToOpenApi(httpClient, api);
-        discoveredApis.push({
-          id: api.ApiId!,
-          name: api.Name || 'Unnamed HTTP API',
-          type: 'HTTP',
-          endpoint: api.ApiEndpoint,
-          spec
-        });
+        if (api.ProtocolType === 'WEBSOCKET') {
+          const spec = await convertWebSocketApiToOpenApi(httpClient, api);
+          discoveredApis.push({
+            id: api.ApiId!,
+            name: api.Name || 'Unnamed WebSocket API',
+            type: 'WEBSOCKET',
+            endpoint: api.ApiEndpoint,
+            spec
+          });
+        } else {
+          const spec = await convertHttpApiToOpenApi(httpClient, api);
+          discoveredApis.push({
+            id: api.ApiId!,
+            name: api.Name || 'Unnamed HTTP API',
+            type: 'HTTP',
+            endpoint: api.ApiEndpoint,
+            spec
+          });
+        }
       } catch (error) {
-        console.error(`Error processing HTTP API ${api.ApiId}:`, error);
+        console.error(`Error processing ${api.ProtocolType} API ${api.ApiId}:`, error);
       }
     }
   } catch (error) {

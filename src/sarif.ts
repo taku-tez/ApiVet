@@ -216,7 +216,7 @@ function findingsToResults(findings: Finding[], rules: SarifRule[]): SarifResult
  */
 export function generateSarif(
   findings: Finding[],
-  version: string = '0.5.0'
+  version: string = '0.7.1'
 ): SarifOutput {
   const rules = findingsToRules(findings);
   const results = findingsToResults(findings, rules);

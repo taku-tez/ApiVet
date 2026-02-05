@@ -603,5 +603,403 @@ export const owaspRules: Rule[] = [
 
       return findings;
     }
+  },
+
+  // ============================================
+  // API6:2023 - Unrestricted Access to Sensitive Business Flows
+  // ============================================
+
+  // API6:2023 - Sensitive business flow without rate limiting
+  {
+    id: 'APIVET084',
+    title: 'Sensitive business flow without rate limiting',
+    description: 'Sensitive business endpoints should implement rate limiting to prevent abuse',
+    severity: 'high',
+    owaspCategory: 'API6:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      
+      const sensitivePatterns = [
+        'signup', 'register', 'login', 'signin', 'checkout', 'purchase',
+        'payment', 'transfer', 'withdraw', 'vote', 'verify', 'confirm',
+        'reset-password', 'forgot-password', 'reset_password', 'forgot_password',
+        'otp', 'mfa', 'totp', '2fa'
+      ];
+
+      for (const [path, pathItem] of Object.entries(paths)) {
+        const pathLower = path.toLowerCase();
+        const isSensitive = sensitivePatterns.some(p => pathLower.includes(p));
+        if (!isSensitive) continue;
+
+        for (const method of HTTP_METHODS) {
+          const operation = pathItem[method];
+          if (!operation) continue;
+
+          const responses = operation.responses || {};
+          const has429 = '429' in responses;
+          
+          // Check for rate limit headers in any response
+          let hasRateLimitHeader = false;
+          for (const response of Object.values(responses)) {
+            const headerNames = getResponseHeaderNames(response as any, spec);
+            if (headerNames.some(h => 
+              h.includes('ratelimit') || 
+              h.includes('rate-limit') || 
+              h.includes('retry-after') ||
+              h.includes('x-rate-limit')
+            )) {
+              hasRateLimitHeader = true;
+              break;
+            }
+          }
+
+          if (!has429 && !hasRateLimitHeader) {
+            findings.push(createFinding(
+              'APIVET084',
+              'Sensitive business flow without rate limiting',
+              `${method.toUpperCase()} ${path} is a sensitive business endpoint but lacks rate limiting (no 429 response or rate-limit headers).`,
+              'high',
+              {
+                owaspCategory: 'API6:2023',
+                filePath,
+                endpoint: path,
+                method: method.toUpperCase(),
+                remediation: 'Implement rate limiting with 429 responses and X-RateLimit-* headers to prevent automated abuse.'
+              }
+            ));
+          }
+        }
+      }
+
+      return findings;
+    }
+  },
+
+  // API6:2023 - No CAPTCHA/bot protection indication
+  {
+    id: 'APIVET085',
+    title: 'No CAPTCHA/bot protection indication',
+    description: 'Sensitive business endpoints should indicate bot protection mechanisms',
+    severity: 'medium',
+    owaspCategory: 'API6:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      
+      const sensitivePatterns = [
+        'signup', 'register', 'login', 'signin', 'checkout', 'purchase',
+        'payment', 'transfer', 'vote', 'reset-password', 'forgot-password',
+        'reset_password', 'forgot_password'
+      ];
+      
+      const botProtectionKeywords = [
+        'captcha', 'recaptcha', 'hcaptcha', 'turnstile', 'bot-protection',
+        'bot_protection', 'challenge', 'human-verification', 'human_verification'
+      ];
+
+      for (const [path, pathItem] of Object.entries(paths)) {
+        const pathLower = path.toLowerCase();
+        const isSensitive = sensitivePatterns.some(p => pathLower.includes(p));
+        if (!isSensitive) continue;
+
+        for (const method of ['post'] as const) {
+          const operation = pathItem[method];
+          if (!operation) continue;
+
+          // Check description
+          const opDescription = (operation.description || '').toLowerCase();
+          const opSummary = (operation.summary || '').toLowerCase();
+          
+          // Check parameters
+          const params = [...(pathItem.parameters || []), ...(operation.parameters || [])];
+          const paramText = params.map(p => `${p.name} ${p.description || ''}`).join(' ').toLowerCase();
+          
+          // Check for x-* extensions
+          const extSpec = operation as Record<string, unknown>;
+          const extensionText = Object.entries(extSpec)
+            .filter(([k]) => k.startsWith('x-'))
+            .map(([_, v]) => JSON.stringify(v))
+            .join(' ')
+            .toLowerCase();
+          
+          const allText = `${opDescription} ${opSummary} ${paramText} ${extensionText}`;
+          const hasBotProtection = botProtectionKeywords.some(k => allText.includes(k));
+
+          if (!hasBotProtection) {
+            findings.push(createFinding(
+              'APIVET085',
+              'No CAPTCHA/bot protection indication',
+              `${method.toUpperCase()} ${path} is a sensitive business endpoint but does not indicate bot protection (CAPTCHA, reCAPTCHA, hCaptcha, Turnstile).`,
+              'medium',
+              {
+                owaspCategory: 'API6:2023',
+                filePath,
+                endpoint: path,
+                method: method.toUpperCase(),
+                remediation: 'Implement CAPTCHA or bot protection to prevent automated abuse of sensitive business flows.'
+              }
+            ));
+          }
+        }
+      }
+
+      return findings;
+    }
+  },
+
+  // API6:2023 - Signup/registration without duplicate check
+  {
+    id: 'APIVET086',
+    title: 'Signup/registration without duplicate check',
+    description: 'Registration endpoints should define 409 Conflict response for duplicate accounts',
+    severity: 'low',
+    owaspCategory: 'API6:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      
+      const signupPatterns = ['signup', 'register', 'registration', 'create-account', 'create_account'];
+
+      for (const [path, pathItem] of Object.entries(paths)) {
+        const pathLower = path.toLowerCase();
+        const isSignup = signupPatterns.some(p => pathLower.includes(p));
+        if (!isSignup) continue;
+
+        const operation = pathItem.post;
+        if (!operation) continue;
+
+        const responses = operation.responses || {};
+        const has409 = '409' in responses;
+
+        if (!has409) {
+          findings.push(createFinding(
+            'APIVET086',
+            'Signup/registration without duplicate check',
+            `POST ${path} is a registration endpoint but does not define 409 Conflict response for duplicate accounts.`,
+            'low',
+            {
+              owaspCategory: 'API6:2023',
+              filePath,
+              endpoint: path,
+              method: 'POST',
+              remediation: 'Add 409 Conflict response to indicate duplicate account handling.'
+            }
+          ));
+        }
+      }
+
+      return findings;
+    }
+  },
+
+  // ============================================
+  // API10:2023 - Unsafe Consumption of APIs
+  // ============================================
+
+  // API10:2023 - External API call without timeout indication
+  {
+    id: 'APIVET087',
+    title: 'External API call without timeout indication',
+    description: 'Endpoints calling external APIs via callbacks/webhooks should indicate timeout handling',
+    severity: 'medium',
+    owaspCategory: 'API10:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      
+      const callbackParamPatterns = [
+        'callback_url', 'callbackurl', 'webhook_url', 'webhookurl',
+        'redirect_uri', 'redirecturi', 'notify_url', 'notifyurl',
+        'callback', 'webhook', 'notification_url', 'notificationurl'
+      ];
+      
+      const timeoutKeywords = ['timeout', 'time-out', 'time_out', 'retry', 'retries', 'max-wait', 'max_wait'];
+
+      for (const [path, pathItem] of Object.entries(paths)) {
+        for (const method of HTTP_METHODS) {
+          const operation = pathItem[method];
+          if (!operation) continue;
+
+          // Check parameters for callback/webhook URL fields
+          const params = [...(pathItem.parameters || []), ...(operation.parameters || [])];
+          const hasCallbackParam = params.some(p => 
+            callbackParamPatterns.some(pattern => p.name.toLowerCase().includes(pattern))
+          );
+
+          // Check request body for callback/webhook URL fields
+          let hasCallbackInBody = false;
+          const requestBody = operation.requestBody as { content?: Record<string, { schema?: unknown }> } | undefined;
+          if (requestBody?.content) {
+            for (const mediaType of Object.values(requestBody.content)) {
+              if (mediaType.schema) {
+                const props = collectSchemaProperties(mediaType.schema, spec);
+                hasCallbackInBody = props.some(prop => 
+                  callbackParamPatterns.some(pattern => prop.toLowerCase().includes(pattern))
+                );
+                if (hasCallbackInBody) break;
+              }
+            }
+          }
+
+          if (!hasCallbackParam && !hasCallbackInBody) continue;
+
+          // Check if timeout is mentioned anywhere
+          const opDescription = (operation.description || '').toLowerCase();
+          const opSummary = (operation.summary || '').toLowerCase();
+          const extSpec = operation as Record<string, unknown>;
+          const extensionText = Object.entries(extSpec)
+            .filter(([k]) => k.startsWith('x-'))
+            .map(([_, v]) => JSON.stringify(v))
+            .join(' ')
+            .toLowerCase();
+          
+          const allText = `${opDescription} ${opSummary} ${extensionText}`;
+          const hasTimeout = timeoutKeywords.some(k => allText.includes(k));
+
+          if (!hasTimeout) {
+            findings.push(createFinding(
+              'APIVET087',
+              'External API call without timeout indication',
+              `${method.toUpperCase()} ${path} accepts callback/webhook URLs but does not indicate timeout handling for external calls.`,
+              'medium',
+              {
+                owaspCategory: 'API10:2023',
+                filePath,
+                endpoint: path,
+                method: method.toUpperCase(),
+                remediation: 'Document timeout and retry policies for external API calls. Implement proper timeout handling.'
+              }
+            ));
+          }
+        }
+      }
+
+      return findings;
+    }
+  },
+
+  // API10:2023 - Webhook/callback without signature verification
+  {
+    id: 'APIVET088',
+    title: 'Webhook/callback without signature verification',
+    description: 'Webhook/callback endpoints should implement signature verification',
+    severity: 'high',
+    owaspCategory: 'API10:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      
+      const webhookPathPatterns = ['webhook', 'callback', 'hook', 'notify', 'notification'];
+      const signatureKeywords = [
+        'signature', 'hmac', 'sha256', 'sha-256', 'verify', 'validation',
+        'x-signature', 'x-hub-signature', 'x-webhook-signature', 'x-hook-signature'
+      ];
+
+      for (const [path, pathItem] of Object.entries(paths)) {
+        const pathLower = path.toLowerCase();
+        const isWebhook = webhookPathPatterns.some(p => pathLower.includes(p));
+        if (!isWebhook) continue;
+
+        for (const method of ['post', 'put'] as const) {
+          const operation = pathItem[method];
+          if (!operation) continue;
+
+          // Check description and summary
+          const opDescription = (operation.description || '').toLowerCase();
+          const opSummary = (operation.summary || '').toLowerCase();
+          
+          // Check parameters for signature headers
+          const params = [...(pathItem.parameters || []), ...(operation.parameters || [])];
+          const hasSignatureParam = params.some(p => 
+            signatureKeywords.some(k => p.name.toLowerCase().includes(k))
+          );
+          
+          // Check extensions
+          const extSpec = operation as Record<string, unknown>;
+          const extensionText = Object.entries(extSpec)
+            .filter(([k]) => k.startsWith('x-'))
+            .map(([_, v]) => JSON.stringify(v))
+            .join(' ')
+            .toLowerCase();
+          
+          const allText = `${opDescription} ${opSummary} ${extensionText}`;
+          const hasSignatureMention = signatureKeywords.some(k => allText.includes(k));
+
+          if (!hasSignatureParam && !hasSignatureMention) {
+            findings.push(createFinding(
+              'APIVET088',
+              'Webhook/callback without signature verification',
+              `${method.toUpperCase()} ${path} appears to be a webhook endpoint but does not indicate signature verification.`,
+              'high',
+              {
+                owaspCategory: 'API10:2023',
+                filePath,
+                endpoint: path,
+                method: method.toUpperCase(),
+                remediation: 'Implement HMAC signature verification (X-Hub-Signature, X-Webhook-Signature) to validate webhook requests.'
+              }
+            ));
+          }
+        }
+      }
+
+      return findings;
+    }
+  },
+
+  // API10:2023 - Third-party API integration without TLS
+  {
+    id: 'APIVET089',
+    title: 'Third-party API integration without TLS',
+    description: 'External API integrations should use HTTPS',
+    severity: 'high',
+    owaspCategory: 'API10:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      // Patterns suggesting third-party/external API
+      const externalPatterns = [
+        /\.api\./i,  // anything.api.something
+        /api\./i,    // api.something
+        /webhook/i,
+        /callback/i,
+        /integration/i,
+        /third-party/i,
+        /thirdparty/i,
+        /external/i
+      ];
+
+      for (const server of servers) {
+        const url = server.url;
+        
+        // Skip if not HTTP
+        if (!isHttpUrl(url)) continue;
+        
+        // Skip localhost
+        if (isLocalhostUrl(url)) continue;
+        
+        // Check if URL suggests external/third-party API
+        const isExternal = externalPatterns.some(p => p.test(url)) ||
+          (server.description && externalPatterns.some(p => p.test(server.description || '')));
+
+        if (isExternal) {
+          findings.push(createFinding(
+            'APIVET089',
+            'Third-party API integration without TLS',
+            `Server "${url}" appears to be an external API integration using HTTP instead of HTTPS.`,
+            'high',
+            {
+              owaspCategory: 'API10:2023',
+              filePath,
+              remediation: 'Use HTTPS for all third-party API integrations to ensure data is encrypted in transit.'
+            }
+          ));
+        }
+      }
+
+      return findings;
+    }
   }
 ];

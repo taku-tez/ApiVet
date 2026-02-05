@@ -228,10 +228,11 @@ describe('Inventory', () => {
       );
       
       expect(endpoints.length).toBeGreaterThanOrEqual(4);
-      expect(endpoints.some(e => e.method === 'GET' && e.path === '/')).toBe(true);  // @Get()
-      expect(endpoints.some(e => e.method === 'GET' && e.path === ':id')).toBe(true);  // @Get(':id')
-      expect(endpoints.some(e => e.method === 'POST' && e.path === '/')).toBe(true);  // @Post()
-      expect(endpoints.some(e => e.method === 'DELETE' && e.path === ':id')).toBe(true);  // @Delete(':id')
+      // Now includes @Controller('users') prefix
+      expect(endpoints.some(e => e.method === 'GET' && e.path === '/users')).toBe(true);  // @Get()
+      expect(endpoints.some(e => e.method === 'GET' && e.path === '/users/:id')).toBe(true);  // @Get(':id')
+      expect(endpoints.some(e => e.method === 'POST' && e.path === '/users')).toBe(true);  // @Post()
+      expect(endpoints.some(e => e.method === 'DELETE' && e.path === '/users/:id')).toBe(true);  // @Delete(':id')
     });
 
     it('should discover Hapi routes', async () => {

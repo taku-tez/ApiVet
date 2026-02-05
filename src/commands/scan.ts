@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import { scanOpenApiSpec, type ScanResult } from '../scanner/index.js';
 import { formatScanResults, formatScanResultsJson } from '../formatter.js';
 import { formatSarif } from '../sarif.js';
+import { filterFindings, parseRuleFilters } from './cloud-utils.js';
 import type { Severity } from '../types.js';
 
 interface ScanCommandOptions {
@@ -37,9 +38,8 @@ export async function scanCommand(
   // Parse ignore patterns
   const extraIgnore = ignore ? ignore.split(',').map(p => p.trim()) : undefined;
 
-  // Parse rule filters
-  const onlyRuleIds = onlyRules ? onlyRules.split(',').map(r => r.trim().toUpperCase()) : undefined;
-  const excludeRuleIds = excludeRules ? excludeRules.split(',').map(r => r.trim().toUpperCase()) : undefined;
+  // Parse rule filters using shared utility
+  const { onlyRuleIds, excludeRuleIds } = parseRuleFilters(onlyRules, excludeRules);
   
   try {
     let results = await scanOpenApiSpec(targetPath, {
@@ -48,19 +48,10 @@ export async function scanCommand(
       extraIgnore
     });
 
-    // Filter rules if specified
+    // Filter rules if specified using shared filterFindings utility
     if (onlyRuleIds || excludeRuleIds) {
       for (const result of results) {
-        result.findings = result.findings.filter(f => {
-          const ruleId = f.ruleId.toUpperCase();
-          if (onlyRuleIds && !onlyRuleIds.some(id => ruleId.startsWith(id))) {
-            return false;
-          }
-          if (excludeRuleIds && excludeRuleIds.some(id => ruleId.startsWith(id))) {
-            return false;
-          }
-          return true;
-        });
+        result.findings = filterFindings(result.findings, { onlyRuleIds, excludeRuleIds });
       }
     }
     

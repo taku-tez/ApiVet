@@ -7,6 +7,21 @@ import { ApiGatewayServiceClient } from '@google-cloud/api-gateway';
 import type { OpenApiSpec } from '../types.js';
 import YAML from 'yaml';
 
+/**
+ * Recursively check if an object (or any nested object) contains a given property key
+ */
+function hasNestedProperty(obj: unknown, key: string): boolean {
+  if (obj === null || obj === undefined || typeof obj !== 'object') return false;
+  const record = obj as Record<string, unknown>;
+  if (key in record) return true;
+  for (const value of Object.values(record)) {
+    if (typeof value === 'object' && value !== null) {
+      if (hasNestedProperty(value, key)) return true;
+    }
+  }
+  return false;
+}
+
 export interface GcpApiGatewayOptions {
   project?: string;
   location?: string;
@@ -74,14 +89,18 @@ function enrichSpecWithGcpInfo(
     enrichedSpec.components.securitySchemes = {};
   }
 
-  // Look for x-google-backend (indicates backend authentication)
-  const specStr = JSON.stringify(spec);
-  if (specStr.includes('x-google-backend')) {
+  // Structured detection of GCP-specific extensions
+  const specAny = spec as Record<string, unknown>;
+
+  // Check top-level x-google-backend
+  const hasGoogleBackend = !!specAny['x-google-backend'] || hasNestedProperty(spec, 'x-google-backend');
+  if (hasGoogleBackend) {
     enrichedSpec['x-google-backend-detected'] = true;
   }
 
-  // Look for security definitions
-  if (specStr.includes('x-google-audiences')) {
+  // Check security definitions for x-google-audiences
+  const hasGoogleAudiences = hasNestedProperty(spec, 'x-google-audiences');
+  if (hasGoogleAudiences) {
     enrichedSpec.components.securitySchemes['google-id-token'] = {
       type: 'oauth2',
       description: 'Google ID Token authentication',
@@ -89,7 +108,9 @@ function enrichSpecWithGcpInfo(
     };
   }
 
-  if (specStr.includes('x-google-issuer')) {
+  // Check security definitions for x-google-issuer
+  const hasGoogleIssuer = hasNestedProperty(spec, 'x-google-issuer');
+  if (hasGoogleIssuer) {
     enrichedSpec.components.securitySchemes['google-jwt'] = {
       type: 'http',
       scheme: 'bearer',
@@ -98,8 +119,12 @@ function enrichSpecWithGcpInfo(
     };
   }
 
-  // Check for API key requirement
-  if (specStr.includes('x-google-api-key') || specStr.includes('api_key_required')) {
+  // Check for API key requirement (structured)
+  const hasApiKeyRequirement =
+    !!specAny['x-google-api-key'] ||
+    hasNestedProperty(spec, 'x-google-api-key') ||
+    hasNestedProperty(spec, 'api_key_required');
+  if (hasApiKeyRequirement) {
     enrichedSpec.components.securitySchemes['api-key'] = {
       type: 'apiKey',
       in: 'query',

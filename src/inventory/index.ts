@@ -20,6 +20,7 @@ interface FrameworkPattern {
   name: string;
   routePatterns: RegExp[];
   methodExtractor: (match: RegExpMatchArray) => { method: string; path: string } | null;
+  extractPrefix?: (content: string) => string;
 }
 
 const FRAMEWORKS: FrameworkPattern[] = [
@@ -29,13 +30,20 @@ const FRAMEWORKS: FrameworkPattern[] = [
       // app.get('/path', handler)
       /(?:app|router)\.(get|post|put|delete|patch|options|head|all)\s*\(\s*['"`]([^'"`]+)['"`]/gi,
       // router.route('/path').get(handler).post(handler)
-      /\.route\s*\(\s*['"`]([^'"`]+)['"`]\s*\)\s*\.(get|post|put|delete|patch)/gi
+      /\.route\s*\(\s*['"`]([^'"`]+)['"`]\s*\)\s*\.(get|post|put|delete|patch)/gi,
+      // app.use('/prefix', router) or router.use('/prefix', someRouter) - mount points
+      /(?:app|router)\.use\s*\(\s*['"`]([^'"`]+)['"`]\s*,\s*(\w+)/gi
     ],
     methodExtractor: (match) => {
       if (match[2] && match[1]) {
         // Check if it's the .route() pattern
         if (match[0].includes('.route')) {
           return { method: match[2].toUpperCase(), path: match[1] };
+        }
+        // Check if it's a .use() mount point pattern
+        if (match[0].includes('.use')) {
+          // match[1] is the path prefix, match[2] is the router variable name
+          return { method: 'USE', path: `[mount] ${match[1]} → ${match[2]}` };
         }
         return { method: match[1].toUpperCase(), path: match[2] };
       }
@@ -100,6 +108,11 @@ const FRAMEWORKS: FrameworkPattern[] = [
         return { method: match[1].toUpperCase(), path };
       }
       return null;
+    },
+    extractPrefix: (content: string) => {
+      // Extract @Controller('prefix') decorator
+      const controllerMatch = content.match(/@Controller\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/);
+      return controllerMatch ? controllerMatch[1] : '';
     }
   },
   {
@@ -301,6 +314,9 @@ async function scanFile(
     const { stripped: content, lineMap, stringRanges } = stripComments(rawContent);
 
     for (const framework of frameworks) {
+      // Extract prefix if the framework supports it (e.g., NestJS @Controller)
+      const prefix = framework.extractPrefix ? framework.extractPrefix(content) : '';
+      
       for (const pattern of framework.routePatterns) {
         // Reset lastIndex for global regex
         pattern.lastIndex = 0;
@@ -314,9 +330,24 @@ async function scanFile(
 
           const extracted = framework.methodExtractor(match);
           if (extracted) {
+            // Combine prefix and route path
+            let fullPath = extracted.path;
+            if (prefix) {
+              // Normalize path: ensure single leading slash, no double slashes
+              const normalizedPrefix = prefix.startsWith('/') ? prefix : `/${prefix}`;
+              const normalizedRoute = extracted.path === '/' ? '' : extracted.path;
+              fullPath = normalizedPrefix + (normalizedRoute.startsWith('/') ? normalizedRoute : `/${normalizedRoute}`);
+              // Remove trailing slash unless it's just "/"
+              if (fullPath !== '/' && fullPath.endsWith('/')) {
+                fullPath = fullPath.slice(0, -1);
+              }
+              // Fix double slashes
+              fullPath = fullPath.replace(/\/+/g, '/');
+            }
+            
             endpoints.push({
               method: extracted.method,
-              path: extracted.path,
+              path: fullPath,
               file: filePath,
               line: findOriginalLineNumber(content, match.index, lineMap),
               framework: framework.name

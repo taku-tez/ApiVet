@@ -2,7 +2,10 @@
  * ApiVet Security Rules - Main Export
  * 
  * Rules are organized by category:
- * - owasp.ts: OWASP API Top 10 2023 core rules (APIVET001-015)
+ * - owasp.ts: OWASP API Top 10 2023 core rules (APIVET001-015, 084-089)
+ *   - APIVET001-015: Core OWASP API security rules
+ *   - APIVET084-086: API6:2023 - Unrestricted Access to Sensitive Business Flows
+ *   - APIVET087-089: API10:2023 - Unsafe Consumption of APIs
  * - auth.ts: JWT and OAuth2 authentication rules (APIVET016-025)
  * - aws.ts: AWS API Gateway and related services (APIVET026-029, 034, 036-038, 048-049)
  * - azure.ts: Azure API Management and services (APIVET030, 039-040, 056-065)
