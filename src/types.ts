@@ -31,8 +31,11 @@ export interface OpenApiSpec {
   components?: {
     securitySchemes?: Record<string, SecurityScheme>;
     schemas?: Record<string, unknown>;
+    headers?: Record<string, unknown>;
   };
   security?: SecurityRequirement[];
+  // Allow vendor extensions (x-*)
+  [key: `x-${string}`]: unknown;
 }
 
 export interface PathItem {
@@ -45,6 +48,8 @@ export interface PathItem {
   head?: Operation;
   trace?: Operation;
   parameters?: Parameter[];
+  // Allow dynamic method access
+  [key: string]: Operation | Parameter[] | undefined;
 }
 
 export interface Operation {
