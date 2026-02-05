@@ -1,0 +1,101 @@
+openapi: "3.0.0"
+info:
+  title: Vulnerable API Example
+  version: "1.0.0"
+  description: Intentionally insecure API for testing
+
+servers:
+  - url: http://api.example.com
+    description: Production (INSECURE - uses HTTP)
+
+paths:
+  /users:
+    get:
+      summary: List all users
+      description: Returns all users without pagination
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    email:
+                      type: string
+                    password:
+                      type: string
+                    ssn:
+                      type: string
+
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      description: No authorization check - BOLA vulnerable
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User details
+    
+    delete:
+      summary: Delete user
+      deprecated: true
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: User deleted
+
+  /admin/settings:
+    post:
+      summary: Update admin settings
+      description: Admin endpoint without security
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        "200":
+          description: Settings updated
+
+  /search:
+    get:
+      summary: Search users
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: filter
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Search results
+
+  /fetch:
+    post:
+      summary: Fetch external resource
+      description: SSRF vulnerable
+      parameters:
+        - name: url
+          in: query
+          schema:
+            type: string
+            format: uri
+      responses:
+        "200":
+          description: Fetched content
