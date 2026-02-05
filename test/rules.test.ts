@@ -281,9 +281,332 @@ describe('ApiVet Rules', () => {
     });
   });
 
+  describe('APIVET016 - OAuth2 Implicit Flow', () => {
+    it('should detect OAuth2 implicit flow', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            oauth: {
+              type: 'oauth2',
+              flows: {
+                implicit: {
+                  authorizationUrl: 'https://auth.example.com/authorize',
+                  scopes: { read: 'Read access' }
+                }
+              }
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const implicitFinding = findings.find(f => f.ruleId === 'APIVET016');
+      
+      expect(implicitFinding).toBeDefined();
+      expect(implicitFinding?.severity).toBe('high');
+    });
+  });
+
+  describe('APIVET017 - OAuth2 Password Flow', () => {
+    it('should detect OAuth2 password flow', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            oauth: {
+              type: 'oauth2',
+              flows: {
+                password: {
+                  tokenUrl: 'https://auth.example.com/token',
+                  scopes: { read: 'Read access' }
+                }
+              }
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const passwordFinding = findings.find(f => f.ruleId === 'APIVET017');
+      
+      expect(passwordFinding).toBeDefined();
+      expect(passwordFinding?.severity).toBe('high');
+    });
+  });
+
+  describe('APIVET018 - OAuth2 HTTP Endpoint', () => {
+    it('should detect OAuth2 token URL using HTTP', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            oauth: {
+              type: 'oauth2',
+              flows: {
+                clientCredentials: {
+                  tokenUrl: 'http://auth.example.com/token',
+                  scopes: { read: 'Read access' }
+                }
+              }
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const httpFinding = findings.find(f => f.ruleId === 'APIVET018');
+      
+      expect(httpFinding).toBeDefined();
+      expect(httpFinding?.severity).toBe('critical');
+    });
+
+    it('should allow localhost HTTP for development', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            oauth: {
+              type: 'oauth2',
+              flows: {
+                clientCredentials: {
+                  tokenUrl: 'http://localhost:8080/token',
+                  scopes: {}
+                }
+              }
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const httpFinding = findings.find(f => f.ruleId === 'APIVET018');
+      
+      expect(httpFinding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET019 - API Key in Query', () => {
+    it('should detect API key in query parameter', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            apiKey: {
+              type: 'apiKey',
+              in: 'query',
+              name: 'api_key'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const queryKeyFinding = findings.find(f => f.ruleId === 'APIVET019');
+      
+      expect(queryKeyFinding).toBeDefined();
+      expect(queryKeyFinding?.severity).toBe('medium');
+    });
+
+    it('should not flag API key in header', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            apiKey: {
+              type: 'apiKey',
+              in: 'header',
+              name: 'X-API-Key'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const queryKeyFinding = findings.find(f => f.ruleId === 'APIVET019');
+      
+      expect(queryKeyFinding).toBeUndefined();
+    });
+  });
+
+  describe('APIVET020 - OAuth2 Broad Scopes', () => {
+    it('should detect overly broad OAuth2 scopes', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            oauth: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://auth.example.com/authorize',
+                  tokenUrl: 'https://auth.example.com/token',
+                  scopes: {
+                    'admin': 'Full admin access',
+                    'read': 'Read only'
+                  }
+                }
+              }
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const scopeFinding = findings.find(f => f.ruleId === 'APIVET020');
+      
+      expect(scopeFinding).toBeDefined();
+      expect(scopeFinding?.title).toContain('admin');
+    });
+  });
+
+  describe('APIVET021 - OpenID Connect HTTP', () => {
+    it('should detect OpenID Connect URL using HTTP', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            oidc: {
+              type: 'openIdConnect',
+              openIdConnectUrl: 'http://auth.example.com/.well-known/openid-configuration'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const oidcFinding = findings.find(f => f.ruleId === 'APIVET021');
+      
+      expect(oidcFinding).toBeDefined();
+      expect(oidcFinding?.severity).toBe('critical');
+    });
+  });
+
+  describe('APIVET022 - JWT Weak Algorithm', () => {
+    it('should detect JWT none algorithm mention', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            bearer: {
+              type: 'http',
+              scheme: 'bearer',
+              bearerFormat: 'JWT',
+              description: 'Accepts JWT tokens. Supports alg: none for testing.'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const jwtFinding = findings.find(f => f.ruleId === 'APIVET022' && f.title.includes('none'));
+      
+      expect(jwtFinding).toBeDefined();
+      expect(jwtFinding?.severity).toBe('critical');
+    });
+
+    it('should detect symmetric JWT algorithm mention', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            bearer: {
+              type: 'http',
+              scheme: 'bearer',
+              bearerFormat: 'JWT',
+              description: 'JWT tokens signed with HS256'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const jwtFinding = findings.find(f => f.ruleId === 'APIVET022' && f.title.includes('HS256'));
+      
+      expect(jwtFinding).toBeDefined();
+      expect(jwtFinding?.severity).toBe('medium');
+    });
+  });
+
+  describe('APIVET023 - OAuth2 Missing Refresh URL', () => {
+    it('should detect missing refresh URL in authorization code flow', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            oauth: {
+              type: 'oauth2',
+              flows: {
+                authorizationCode: {
+                  authorizationUrl: 'https://auth.example.com/authorize',
+                  tokenUrl: 'https://auth.example.com/token',
+                  scopes: { read: 'Read' }
+                  // No refreshUrl
+                }
+              }
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const refreshFinding = findings.find(f => f.ruleId === 'APIVET023');
+      
+      expect(refreshFinding).toBeDefined();
+      expect(refreshFinding?.severity).toBe('low');
+    });
+  });
+
+  describe('APIVET025 - Cookie Auth', () => {
+    it('should flag cookie-based API key authentication', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        components: {
+          securitySchemes: {
+            cookieAuth: {
+              type: 'apiKey',
+              in: 'cookie',
+              name: 'session_id'
+            }
+          }
+        },
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const cookieFinding = findings.find(f => f.ruleId === 'APIVET025');
+      
+      expect(cookieFinding).toBeDefined();
+      expect(cookieFinding?.severity).toBe('medium');
+    });
+  });
+
   describe('Rule count', () => {
-    it('should have at least 15 rules', () => {
-      expect(rules.length).toBeGreaterThanOrEqual(15);
+    it('should have at least 25 rules', () => {
+      expect(rules.length).toBeGreaterThanOrEqual(25);
     });
   });
 });

@@ -1,0 +1,106 @@
+openapi: "3.0.0"
+info:
+  title: OAuth/JWT Vulnerable API
+  version: "1.0.0"
+  description: Intentionally insecure OAuth2 and JWT configuration
+
+servers:
+  - url: https://api.example.com
+
+components:
+  securitySchemes:
+    # Deprecated: Implicit flow
+    oauth_implicit:
+      type: oauth2
+      description: Legacy implicit flow for SPA
+      flows:
+        implicit:
+          authorizationUrl: https://auth.example.com/authorize
+          scopes:
+            read: Read access
+            write: Write access
+            admin: Full admin access
+    
+    # Insecure: Password flow
+    oauth_password:
+      type: oauth2
+      flows:
+        password:
+          tokenUrl: https://auth.example.com/token
+          scopes:
+            user: User access
+    
+    # Critical: HTTP token URL
+    oauth_http:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: http://auth.example.com/token
+          scopes:
+            service: Service access
+    
+    # Missing refresh URL
+    oauth_no_refresh:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://auth.example.com/authorize
+          tokenUrl: https://auth.example.com/token
+          scopes:
+            read: Read
+    
+    # Insecure: API key in query
+    api_key_query:
+      type: apiKey
+      in: query
+      name: api_key
+      description: API key passed in URL
+    
+    # Cookie auth
+    cookie_auth:
+      type: apiKey
+      in: cookie
+      name: session_token
+    
+    # JWT with weak algorithm mention
+    jwt_weak:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT tokens signed with HS256.
+        For development, accepts alg: none.
+    
+    # OpenID Connect over HTTP
+    oidc_http:
+      type: openIdConnect
+      openIdConnectUrl: http://auth.example.com/.well-known/openid-configuration
+
+security:
+  - oauth_implicit: [read]
+
+paths:
+  /users:
+    get:
+      summary: List users
+      responses:
+        "200":
+          description: User list
+  
+  /payment/charge:
+    post:
+      summary: Process payment
+      description: Sensitive - relies on global security
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                card:
+                  type: string
+      responses:
+        "200":
+          description: Payment processed

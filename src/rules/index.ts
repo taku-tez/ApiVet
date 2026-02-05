@@ -615,6 +615,379 @@ export const rules: Rule[] = [
       
       return findings;
     }
+  },
+
+  // OAuth2 Implicit Flow (deprecated)
+  {
+    id: 'APIVET016',
+    title: 'OAuth2 Implicit Flow is deprecated',
+    description: 'The OAuth2 Implicit flow is deprecated and should not be used for new applications',
+    severity: 'high',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'oauth2' && scheme.flows?.implicit) {
+          findings.push({
+            ruleId: 'APIVET016',
+            title: `OAuth2 Implicit Flow detected in "${name}"`,
+            description: `Security scheme "${name}" uses the OAuth2 Implicit flow which is deprecated per OAuth 2.0 Security Best Current Practice (RFC 9700). Access tokens are exposed in the URL fragment.`,
+            severity: 'high',
+            owaspCategory: 'API2:2023',
+            location: { path: filePath },
+            remediation: 'Migrate to Authorization Code flow with PKCE. For SPAs, use the Authorization Code flow with PKCE instead of Implicit flow.'
+          });
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // OAuth2 Password Flow (Resource Owner Password Credentials)
+  {
+    id: 'APIVET017',
+    title: 'OAuth2 Password Flow is discouraged',
+    description: 'The Resource Owner Password Credentials flow exposes user credentials to the client',
+    severity: 'high',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'oauth2' && scheme.flows?.password) {
+          findings.push({
+            ruleId: 'APIVET017',
+            title: `OAuth2 Password Flow detected in "${name}"`,
+            description: `Security scheme "${name}" uses the Resource Owner Password Credentials flow. This flow requires users to share their credentials with the client application, which is a security anti-pattern.`,
+            severity: 'high',
+            owaspCategory: 'API2:2023',
+            location: { path: filePath },
+            remediation: 'Use Authorization Code flow with PKCE instead. The Password flow should only be used for legacy applications during migration.'
+          });
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // OAuth2 Token/Authorization URL uses HTTP
+  {
+    id: 'APIVET018',
+    title: 'OAuth2 endpoint uses HTTP',
+    description: 'OAuth2 authorization and token endpoints must use HTTPS',
+    severity: 'critical',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'oauth2' && scheme.flows) {
+          const flows = scheme.flows;
+          const urlsToCheck: Array<{ type: string; url?: string }> = [
+            { type: 'authorizationUrl', url: flows.implicit?.authorizationUrl },
+            { type: 'authorizationUrl', url: flows.authorizationCode?.authorizationUrl },
+            { type: 'tokenUrl', url: flows.authorizationCode?.tokenUrl },
+            { type: 'tokenUrl', url: flows.password?.tokenUrl },
+            { type: 'tokenUrl', url: flows.clientCredentials?.tokenUrl },
+            { type: 'refreshUrl', url: flows.authorizationCode?.refreshUrl },
+            { type: 'refreshUrl', url: flows.password?.refreshUrl },
+            { type: 'refreshUrl', url: flows.clientCredentials?.refreshUrl }
+          ];
+          
+          for (const { type, url } of urlsToCheck) {
+            if (url && url.startsWith('http://') && !url.includes('localhost') && !url.includes('127.0.0.1')) {
+              findings.push({
+                ruleId: 'APIVET018',
+                title: `OAuth2 ${type} uses HTTP in "${name}"`,
+                description: `The OAuth2 ${type} "${url}" uses HTTP instead of HTTPS. This exposes tokens and authorization codes to interception.`,
+                severity: 'critical',
+                owaspCategory: 'API2:2023',
+                location: { path: filePath },
+                remediation: 'Always use HTTPS for OAuth2 endpoints. Never transmit tokens or authorization codes over unencrypted connections.'
+              });
+            }
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // API Key in query parameter
+  {
+    id: 'APIVET019',
+    title: 'API Key transmitted in URL query parameter',
+    description: 'API keys in query parameters may be logged and cached insecurely',
+    severity: 'medium',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'apiKey' && scheme.in === 'query') {
+          findings.push({
+            ruleId: 'APIVET019',
+            title: `API Key in query parameter "${name}"`,
+            description: `Security scheme "${name}" transmits the API key in the URL query parameter "${scheme.name}". Query parameters may be logged in server logs, browser history, and proxy caches.`,
+            severity: 'medium',
+            owaspCategory: 'API2:2023',
+            location: { path: filePath },
+            remediation: 'Transmit API keys in HTTP headers instead of query parameters. Use a custom header like X-API-Key or the Authorization header.'
+          });
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // OAuth2 overly broad scopes
+  {
+    id: 'APIVET020',
+    title: 'OAuth2 potentially overly broad scopes',
+    description: 'OAuth2 scopes should follow the principle of least privilege',
+    severity: 'medium',
+    owaspCategory: 'API5:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      const broadScopePatterns = ['admin', 'root', 'superuser', 'all', '*', 'full_access', 'full-access'];
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'oauth2' && scheme.flows) {
+          const allScopes: string[] = [];
+          
+          // Collect all scopes from all flows
+          for (const flow of Object.values(scheme.flows)) {
+            if (flow?.scopes) {
+              allScopes.push(...Object.keys(flow.scopes));
+            }
+          }
+          
+          for (const scope of allScopes) {
+            const lowerScope = scope.toLowerCase();
+            if (broadScopePatterns.some(p => lowerScope.includes(p))) {
+              findings.push({
+                ruleId: 'APIVET020',
+                title: `Potentially overly broad OAuth2 scope "${scope}"`,
+                description: `The scope "${scope}" in security scheme "${name}" may grant excessive permissions. Broad scopes violate the principle of least privilege.`,
+                severity: 'medium',
+                owaspCategory: 'API5:2023',
+                location: { path: filePath },
+                remediation: 'Define granular scopes that provide only the minimum permissions needed. Break down broad scopes into specific resource:action pairs.'
+              });
+            }
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // OpenID Connect URL uses HTTP
+  {
+    id: 'APIVET021',
+    title: 'OpenID Connect discovery URL uses HTTP',
+    description: 'OpenID Connect discovery endpoints must use HTTPS',
+    severity: 'critical',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'openIdConnect' && scheme.openIdConnectUrl) {
+          const url = scheme.openIdConnectUrl;
+          if (url.startsWith('http://') && !url.includes('localhost') && !url.includes('127.0.0.1')) {
+            findings.push({
+              ruleId: 'APIVET021',
+              title: `OpenID Connect URL uses HTTP in "${name}"`,
+              description: `The OpenID Connect discovery URL "${url}" uses HTTP. This allows attackers to intercept the discovery document and redirect authentication to malicious endpoints.`,
+              severity: 'critical',
+              owaspCategory: 'API2:2023',
+              location: { path: filePath },
+              remediation: 'Always use HTTPS for OpenID Connect discovery URLs.'
+            });
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // JWT Algorithm concerns in description
+  {
+    id: 'APIVET022',
+    title: 'JWT weak algorithm indication',
+    description: 'JWT implementations should use strong signing algorithms',
+    severity: 'medium',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      const weakAlgorithms = ['none', 'hs256', 'hs384', 'hs512'];
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'http' && scheme.scheme?.toLowerCase() === 'bearer') {
+          const description = (scheme.description || '').toLowerCase();
+          const bearerFormat = (scheme.bearerFormat || '').toLowerCase();
+          
+          // Check if JWT is mentioned
+          if (description.includes('jwt') || bearerFormat.includes('jwt')) {
+            // Check for weak algorithm mentions
+            for (const alg of weakAlgorithms) {
+              if (description.includes(alg) || bearerFormat.includes(alg)) {
+                const isNone = alg === 'none';
+                findings.push({
+                  ruleId: 'APIVET022',
+                  title: isNone 
+                    ? `JWT "none" algorithm mentioned in "${name}"`
+                    : `JWT symmetric algorithm ${alg.toUpperCase()} mentioned in "${name}"`,
+                  description: isNone
+                    ? `Security scheme "${name}" mentions the JWT "none" algorithm. This algorithm provides no signature verification and should never be accepted.`
+                    : `Security scheme "${name}" mentions the symmetric ${alg.toUpperCase()} algorithm. Symmetric algorithms require sharing the secret with all parties that need to verify tokens.`,
+                  severity: isNone ? 'critical' : 'medium',
+                  owaspCategory: 'API2:2023',
+                  location: { path: filePath },
+                  remediation: isNone
+                    ? 'Never accept JWTs with "alg": "none". Always require a valid signature.'
+                    : 'Consider using asymmetric algorithms like RS256 or ES256 which use public/private key pairs. This allows verification without exposing the signing key.'
+                });
+              }
+            }
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // Missing refresh token endpoint
+  {
+    id: 'APIVET023',
+    title: 'OAuth2 flow without refresh URL',
+    description: 'OAuth2 flows should define refresh token endpoints for token rotation',
+    severity: 'low',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'oauth2' && scheme.flows) {
+          // Check flows that should have refresh URLs
+          const flowsNeedingRefresh = [
+            { name: 'authorizationCode', flow: scheme.flows.authorizationCode },
+            { name: 'password', flow: scheme.flows.password }
+          ];
+          
+          for (const { name: flowName, flow } of flowsNeedingRefresh) {
+            if (flow && !flow.refreshUrl) {
+              findings.push({
+                ruleId: 'APIVET023',
+                title: `OAuth2 ${flowName} flow missing refresh URL in "${name}"`,
+                description: `The ${flowName} flow in security scheme "${name}" does not define a refreshUrl. Without token refresh, users may need to re-authenticate frequently, or tokens may have excessively long lifetimes.`,
+                severity: 'low',
+                owaspCategory: 'API2:2023',
+                location: { path: filePath },
+                remediation: 'Define a refreshUrl for token refresh. Use short-lived access tokens with refresh token rotation for better security.'
+              });
+            }
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // Sensitive endpoints without explicit security
+  {
+    id: 'APIVET024',
+    title: 'Sensitive endpoint relies on global security only',
+    description: 'High-risk endpoints should have explicit security requirements',
+    severity: 'medium',
+    owaspCategory: 'API5:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const sensitivePatterns = [
+        '/password', '/credentials', '/tokens', '/keys', '/secrets',
+        '/payment', '/billing', '/charge', '/subscription',
+        '/pii', '/personal', '/private'
+      ];
+      const paths = spec.paths || {};
+      
+      for (const [path, pathItem] of Object.entries(paths)) {
+        const isSensitive = sensitivePatterns.some(p => path.toLowerCase().includes(p));
+        if (!isSensitive) continue;
+        
+        const methods = ['get', 'post', 'put', 'delete', 'patch'] as const;
+        for (const method of methods) {
+          const operation = pathItem[method];
+          if (!operation) continue;
+          
+          // Has global security but no explicit operation security
+          if (spec.security && spec.security.length > 0 && 
+              (!operation.security || operation.security.length === 0)) {
+            findings.push({
+              ruleId: 'APIVET024',
+              title: `Sensitive endpoint ${method.toUpperCase()} ${path} uses implicit global security`,
+              description: `The endpoint ${method.toUpperCase()} ${path} handles sensitive operations but relies on global security definitions. Sensitive endpoints should have explicit security requirements for clarity and defense in depth.`,
+              severity: 'medium',
+              owaspCategory: 'API5:2023',
+              location: {
+                path: filePath,
+                endpoint: path,
+                method: method.toUpperCase()
+              },
+              remediation: 'Add explicit security requirements to sensitive endpoints, even if they match global settings. This provides documentation clarity and prevents accidental exposure if global settings change.'
+            });
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // Cookie-based auth without security attributes
+  {
+    id: 'APIVET025',
+    title: 'API Key in cookie may lack security attributes',
+    description: 'Cookie-based authentication requires proper security attributes',
+    severity: 'medium',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        if (scheme.type === 'apiKey' && scheme.in === 'cookie') {
+          findings.push({
+            ruleId: 'APIVET025',
+            title: `Cookie-based authentication in "${name}"`,
+            description: `Security scheme "${name}" uses cookie-based authentication. Ensure cookies are set with Secure, HttpOnly, and SameSite attributes to prevent interception and CSRF attacks.`,
+            severity: 'medium',
+            owaspCategory: 'API2:2023',
+            location: { path: filePath },
+            remediation: 'Set cookies with Secure (HTTPS only), HttpOnly (no JavaScript access), and SameSite=Strict or Lax attributes. Consider using token-based authentication for APIs.'
+          });
+        }
+      }
+      
+      return findings;
+    }
   }
 ];
 
