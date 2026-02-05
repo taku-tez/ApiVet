@@ -4,14 +4,14 @@ import { Command } from 'commander';
 import { scanCommand } from './commands/scan.js';
 import { checkCommand } from './commands/check.js';
 import { inventoryCommand } from './commands/inventory.js';
-import { cloudAwsCommand } from './commands/cloud.js';
+import { cloudAwsCommand, cloudGcpCommand } from './commands/cloud.js';
 
 const program = new Command();
 
 program
   .name('apivet')
   .description('API Security Scanner - Static and runtime analysis for API security posture')
-  .version('0.3.1');
+  .version('0.3.2');
 
 program
   .command('scan <path>')
@@ -63,5 +63,18 @@ cloudCmd
   .option('--only-rules <ids>', 'Only run specific rules (comma-separated rule IDs)')
   .option('--exclude-rules <ids>', 'Exclude specific rules (comma-separated rule IDs)')
   .action(cloudAwsCommand);
+
+cloudCmd
+  .command('gcp')
+  .description('Scan GCP API Gateway')
+  .option('-p, --project <project>', 'GCP project ID (default: GOOGLE_CLOUD_PROJECT env)')
+  .option('-l, --location <location>', 'Location (default: global)')
+  .option('--gateway-id <id>', 'Scan specific gateway by ID')
+  .option('-j, --json', 'Output as JSON')
+  .option('-o, --output <file>', 'Write results to file')
+  .option('-s, --severity <level>', 'Filter by severity (critical, high, medium, low, info)')
+  .option('--only-rules <ids>', 'Only run specific rules (comma-separated rule IDs)')
+  .option('--exclude-rules <ids>', 'Exclude specific rules (comma-separated rule IDs)')
+  .action(cloudGcpCommand);
 
 program.parse();
