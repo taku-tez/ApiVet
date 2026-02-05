@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { scanOpenApiSpec, scanFile } from '../src/scanner/index.js';
 
-const TEST_DIR = '/tmp/apivet-test-specs';
+// FB5: Use os.tmpdir() for cross-platform compatibility
+const TEST_DIR = path.join(os.tmpdir(), 'apivet-test-specs');
 
 beforeAll(() => {
   fs.mkdirSync(TEST_DIR, { recursive: true });

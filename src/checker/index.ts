@@ -13,6 +13,8 @@ export interface CheckResult {
 export interface CheckOptions {
   headers?: boolean;
   auth?: 'basic' | 'bearer' | 'apikey';
+  authToken?: string;
+  authHeader?: string;
   timeout?: number;
 }
 
@@ -98,20 +100,61 @@ const DANGEROUS_HEADERS = [
   }
 ];
 
+/**
+ * Build authentication headers based on auth type and token
+ */
+function buildAuthHeaders(
+  auth: CheckOptions['auth'],
+  authToken?: string,
+  authHeader?: string
+): Record<string, string> {
+  if (!auth || !authToken) return {};
+
+  const headerName = authHeader || 'Authorization';
+
+  switch (auth) {
+    case 'basic':
+      // For basic auth, token should be base64-encoded "username:password"
+      // If not already encoded, encode it
+      const base64Token = authToken.includes(':')
+        ? Buffer.from(authToken).toString('base64')
+        : authToken;
+      return { [headerName]: `Basic ${base64Token}` };
+
+    case 'bearer':
+      return { [headerName]: `Bearer ${authToken}` };
+
+    case 'apikey':
+      // For API key, use custom header name (default X-API-Key if no Authorization)
+      const apiKeyHeader = authHeader || 'X-API-Key';
+      return { [apiKeyHeader]: authToken };
+
+    default:
+      return {};
+  }
+}
+
 export async function checkEndpoint(
   url: string,
   options: CheckOptions = {}
 ): Promise<CheckResult> {
-  const { headers: checkHeaders = true, timeout = 10000 } = options;
+  const {
+    headers: checkHeaders = false,  // FB1: Default to false
+    auth,
+    authToken,
+    authHeader,
+    timeout = 10000
+  } = options;
+
   const findings: Finding[] = [];
-  
+
   try {
     // Validate URL
     const parsedUrl = new URL(url);
-    
+
     // Check for HTTP vs HTTPS
-    if (parsedUrl.protocol === 'http:' && 
-        !parsedUrl.hostname.includes('localhost') && 
+    if (parsedUrl.protocol === 'http:' &&
+        !parsedUrl.hostname.includes('localhost') &&
         !parsedUrl.hostname.includes('127.0.0.1')) {
       findings.push({
         ruleId: 'APIVET-LIVE-001',
@@ -121,34 +164,38 @@ export async function checkEndpoint(
         remediation: 'Use HTTPS for all API endpoints to encrypt data in transit.'
       });
     }
-    
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
+
+    // FB2: Build request headers including authentication
+    const requestHeaders: Record<string, string> = {
+      'User-Agent': 'ApiVet/1.0 Security Scanner',
+      ...buildAuthHeaders(auth, authToken, authHeader)
+    };
+
     const startTime = Date.now();
     const response = await fetch(url, {
       method: 'GET',
       signal: controller.signal,
-      headers: {
-        'User-Agent': 'ApiVet/1.0 Security Scanner'
-      }
+      headers: requestHeaders
     });
     const responseTime = Date.now() - startTime;
-    
+
     clearTimeout(timeoutId);
-    
+
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
       responseHeaders[key.toLowerCase()] = value;
     });
-    
+
     if (checkHeaders) {
       // Check for missing security headers
       for (const header of SECURITY_HEADERS) {
         if (!responseHeaders[header.name]) {
           if (header.required) {
             findings.push({
-              ruleId: `APIVET-LIVE-HDR-${header.name.toUpperCase()}`,
+              ruleId: `APIVET-LIVE-HDR-${header.name.toUpperCase().replace(/-/g, '_')}`,
               title: `Missing security header: ${header.name}`,
               description: header.description,
               severity: header.severity,
@@ -157,13 +204,13 @@ export async function checkEndpoint(
           }
         }
       }
-      
+
       // Check for dangerous headers
       for (const header of DANGEROUS_HEADERS) {
         const value = responseHeaders[header.name];
         if (value && header.pattern.test(value)) {
           findings.push({
-            ruleId: `APIVET-LIVE-HDR-${header.name.toUpperCase()}`,
+            ruleId: `APIVET-LIVE-HDR-${header.name.toUpperCase().replace(/-/g, '_')}`,
             title: `Potentially dangerous header: ${header.name}`,
             description: header.description,
             severity: header.severity,
@@ -172,7 +219,7 @@ export async function checkEndpoint(
         }
       }
     }
-    
+
     return {
       url,
       status: 'success',
@@ -182,11 +229,23 @@ export async function checkEndpoint(
       headers: checkHeaders ? responseHeaders : undefined
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    // Provide more helpful error messages
+    let friendlyError = errorMessage;
+    if (errorMessage.includes('abort')) {
+      friendlyError = `Request timed out after ${timeout}ms`;
+    } else if (errorMessage.includes('ECONNREFUSED')) {
+      friendlyError = 'Connection refused - server may be down or unreachable';
+    } else if (errorMessage.includes('ENOTFOUND')) {
+      friendlyError = 'DNS lookup failed - hostname could not be resolved';
+    }
+
     return {
       url,
       status: 'error',
       findings,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: friendlyError
     };
   }
 }

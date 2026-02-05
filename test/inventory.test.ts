@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { discoverEndpoints } from '../src/inventory/index.js';
 
-const TEST_DIR = '/tmp/apivet-test-inventory';
+// FB5: Use os.tmpdir() for cross-platform compatibility
+const TEST_DIR = path.join(os.tmpdir(), 'apivet-test-inventory');
 
 beforeAll(() => {
   fs.mkdirSync(TEST_DIR, { recursive: true });
@@ -171,6 +173,43 @@ app.get('/nested', (req, res) => res.send('OK'));
       );
       
       expect(endpoints.length).toBe(uniqueKeys.size);
+    });
+
+    // FB4: Test that comments are ignored
+    it('should not detect routes in comments', async () => {
+      const commentTestFile = path.join(TEST_DIR, 'commented-routes.js');
+      fs.writeFileSync(
+        commentTestFile,
+        `
+const express = require('express');
+const app = express();
+
+// This is a comment: app.get('/commented-route', handler)
+/* 
+ * Multi-line comment
+ * app.post('/also-commented', handler)
+ */
+/**
+ * JSDoc comment
+ * app.delete('/jsdoc-route', handler)
+ */
+
+// Real route below
+app.get('/real-route', (req, res) => res.send('OK'));
+
+const example = "app.get('/string-route', handler)"; // in string, should not match
+`
+      );
+
+      const endpoints = await discoverEndpoints(commentTestFile, { framework: 'express' });
+      
+      // Should only find the real route, not commented ones or string ones
+      expect(endpoints.length).toBe(1);
+      expect(endpoints[0].path).toBe('/real-route');
+      expect(endpoints.some(e => e.path === '/commented-route')).toBe(false);
+      expect(endpoints.some(e => e.path === '/also-commented')).toBe(false);
+      expect(endpoints.some(e => e.path === '/jsdoc-route')).toBe(false);
+      expect(endpoints.some(e => e.path === '/string-route')).toBe(false);
     });
   });
 });

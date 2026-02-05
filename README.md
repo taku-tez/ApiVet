@@ -25,8 +25,8 @@ apivet scan openapi.yaml
 # Scan a directory for API specs
 apivet scan ./api-specs/
 
-# Live endpoint check
-apivet check https://api.example.com
+# Live endpoint check with header inspection
+apivet check https://api.example.com --headers
 
 # Output as JSON
 apivet scan openapi.yaml --json
@@ -84,26 +84,46 @@ Scan OpenAPI/Swagger specification files.
 apivet scan api.yaml
 apivet scan ./specs/ --recursive
 apivet scan api.json --severity high
+apivet scan api.json --severity info  # Include informational findings
 ```
 
 Options:
-- `--json` - Output results as JSON
-- `--severity <level>` - Filter by severity (critical, high, medium, low)
-- `--recursive` - Scan directories recursively
+- `-j, --json` - Output results as JSON
+- `-s, --severity <level>` - Filter by minimum severity: `critical`, `high`, `medium`, `low`, `info`
+- `-r, --recursive` - Scan directories recursively
+- `-o, --output <file>` - Write results to file
 
 ### `apivet check <url>`
 
 Perform live security checks on an API endpoint.
 
 ```bash
+# Basic check (HTTP/HTTPS only)
 apivet check https://api.example.com
+
+# Check security headers
 apivet check https://api.example.com --headers
+
+# With Bearer token authentication
+apivet check https://api.example.com --auth bearer --auth-token "your-token"
+
+# With API key authentication
+apivet check https://api.example.com --auth apikey --auth-token "your-api-key"
+
+# With Basic authentication (username:password)
+apivet check https://api.example.com --auth basic --auth-token "user:pass"
+
+# Custom timeout
+apivet check https://api.example.com --timeout 5000
 ```
 
 Options:
-- `--headers` - Check security headers
-- `--auth <type>` - Test authentication (basic, bearer, apikey)
-- `--timeout <ms>` - Request timeout (default: 10000)
+- `--headers` - Check security headers (disabled by default)
+- `--auth <type>` - Authentication type: `basic`, `bearer`, `apikey`
+- `--auth-token <token>` - Authentication credential value
+- `--auth-header <name>` - Custom header name (default: `Authorization` for bearer/basic, `X-API-Key` for apikey)
+- `--timeout <ms>` - Request timeout in milliseconds (default: 10000, minimum: 1)
+- `-j, --json` - Output results as JSON
 
 ### `apivet inventory <path>`
 
@@ -112,13 +132,25 @@ Discover and catalog API endpoints from source code.
 ```bash
 apivet inventory ./src
 apivet inventory ./src --framework express
+apivet inventory ./src --json
 ```
+
+Options:
+- `--framework <name>` - Target framework: `express`, `fastify`, `koa`, `hono`, `auto`
+- `-j, --json` - Output results as JSON
+- `-o, --output <file>` - Write results to file
+
+Supported frameworks:
+- **Express** - `app.get()`, `router.get()`, `router.route()`
+- **Fastify** - `fastify.get()`, `fastify.route()`
+- **Koa** - `router.get()` (koa-router)
+- **Hono** - `app.get()`, `new Hono().get()`
 
 ## Exit Codes
 
 - `0` - No issues found
 - `1` - Issues found
-- `2` - Error during scan
+- `2` - Error during scan (invalid input, network error, etc.)
 
 ## License
 
