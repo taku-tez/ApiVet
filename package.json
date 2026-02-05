@@ -1,6 +1,6 @@
 {
   "name": "apivet",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "API security scanner - Static and runtime analysis for API security posture",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

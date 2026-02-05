@@ -175,6 +175,63 @@ app.get('/nested', (req, res) => res.send('OK'));
       expect(endpoints.length).toBe(uniqueKeys.size);
     });
 
+    // FB5: Handle non-existent paths gracefully
+    it('should return empty array for non-existent path', async () => {
+      const endpoints = await discoverEndpoints('/nonexistent/path/to/code');
+      
+      expect(endpoints).toEqual([]);
+    });
+
+    // FB1: Support JSX/TSX/CJS/CTS files
+    it('should discover routes in .tsx files', async () => {
+      const tsxFile = path.join(TEST_DIR, 'react-routes.tsx');
+      fs.writeFileSync(
+        tsxFile,
+        `
+import express from 'express';
+const app = express();
+
+app.get('/tsx-route', (req, res) => res.json({ component: '<App />' }));
+app.post('/tsx-post', (req, res) => res.json({ ok: true }));
+
+export default app;
+`
+      );
+
+      const endpoints = await discoverEndpoints(tsxFile, { framework: 'express' });
+      
+      expect(endpoints.some(e => e.path === '/tsx-route')).toBe(true);
+      expect(endpoints.some(e => e.path === '/tsx-post')).toBe(true);
+    });
+
+    // FB2: Handle multiline template literals
+    it('should handle multiline template literals correctly', async () => {
+      const templateFile = path.join(TEST_DIR, 'template-literal.ts');
+      fs.writeFileSync(
+        templateFile,
+        `
+import express from 'express';
+const app = express();
+
+const longString = \`
+  This is a multiline template literal
+  app.get('/fake-in-template', handler)
+  with route-like patterns inside
+\`;
+
+// Real route
+app.get('/real-template-route', (req, res) => res.send('OK'));
+`
+      );
+
+      const endpoints = await discoverEndpoints(templateFile, { framework: 'express' });
+      
+      // Should only find the real route
+      expect(endpoints.length).toBe(1);
+      expect(endpoints[0].path).toBe('/real-template-route');
+      expect(endpoints.some(e => e.path === '/fake-in-template')).toBe(false);
+    });
+
     // FB4: Test that comments are ignored
     it('should not detect routes in comments', async () => {
       const commentTestFile = path.join(TEST_DIR, 'commented-routes.js');

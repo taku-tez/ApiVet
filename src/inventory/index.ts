@@ -87,84 +87,101 @@ const FRAMEWORKS: FrameworkPattern[] = [
 ];
 
 /**
- * FB4: Remove comments from source code to prevent false positives
+ * Remove comments from source code to prevent false positives
  * Handles single-line (//) and multi-line (/* *\/) comments
+ * FB2: Also handles multi-line template literals (backtick strings)
  * Preserves strings but marks their position for later filtering
  */
 function stripComments(content: string): { stripped: string; lineMap: number[]; stringRanges: Array<{start: number; end: number}> } {
-  const lines = content.split('\n');
-  const lineMap: number[] = []; // Maps stripped line index to original line number
-  const strippedLines: string[] = [];
   const stringRanges: Array<{start: number; end: number}> = [];
+  let result = '';
+  let i = 0;
+  let lineNumber = 1;
+  const lineMap: number[] = [];
+  let currentLineStart = 0;
+  
+  // Track line numbers for the stripped content
+  const updateLineMap = () => {
+    const newLines = result.substring(currentLineStart).split('\n').length - 1;
+    for (let n = 0; n < newLines; n++) {
+      lineMap.push(lineNumber);
+    }
+    currentLineStart = result.length;
+  };
 
-  let inMultiLineComment = false;
-  let totalLength = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    let processedLine = '';
-    let j = 0;
-
-    while (j < line.length) {
-      if (inMultiLineComment) {
-        // Look for end of multi-line comment
-        const endIndex = line.indexOf('*/', j);
-        if (endIndex !== -1) {
-          inMultiLineComment = false;
-          j = endIndex + 2;
-        } else {
-          // Rest of line is in comment
-          break;
-        }
-      } else {
-        // Check for string literals - keep them but track their positions
-        if (line[j] === '"' || line[j] === "'" || line[j] === '`') {
-          const quote = line[j];
-          const stringStart = totalLength + processedLine.length;
-          processedLine += quote;
-          j++;
-          // Skip until end of string
-          while (j < line.length) {
-            if (line[j] === '\\' && j + 1 < line.length) {
-              processedLine += line[j] + line[j + 1];
-              j += 2;
-            } else if (line[j] === quote) {
-              processedLine += quote;
-              j++;
-              break;
-            } else {
-              processedLine += line[j];
-              j++;
-            }
-          }
-          const stringEnd = totalLength + processedLine.length;
-          stringRanges.push({ start: stringStart, end: stringEnd });
-        }
-        // Check for single-line comment
-        else if (line[j] === '/' && j + 1 < line.length && line[j + 1] === '/') {
-          // Rest of line is comment
-          break;
-        }
-        // Check for multi-line comment start
-        else if (line[j] === '/' && j + 1 < line.length && line[j + 1] === '*') {
-          inMultiLineComment = true;
-          j += 2;
-        }
-        else {
-          processedLine += line[j];
-          j++;
-        }
-      }
+  while (i < content.length) {
+    // Track original line numbers
+    if (content[i] === '\n') {
+      lineNumber++;
     }
 
-    strippedLines.push(processedLine);
-    lineMap.push(i + 1); // 1-indexed line number
-    totalLength += processedLine.length + 1; // +1 for newline
+    // Check for single-line comment
+    if (content[i] === '/' && content[i + 1] === '/') {
+      // Skip until end of line
+      while (i < content.length && content[i] !== '\n') {
+        i++;
+      }
+      continue;
+    }
+
+    // Check for multi-line comment
+    if (content[i] === '/' && content[i + 1] === '*') {
+      i += 2;
+      while (i < content.length && !(content[i] === '*' && content[i + 1] === '/')) {
+        if (content[i] === '\n') lineNumber++;
+        i++;
+      }
+      i += 2; // Skip */
+      continue;
+    }
+
+    // Check for string literals (including multi-line template literals)
+    if (content[i] === '"' || content[i] === "'" || content[i] === '`') {
+      const quote = content[i];
+      const stringStart = result.length;
+      result += content[i];
+      i++;
+
+      // FB2: Handle multi-line template literals properly
+      while (i < content.length) {
+        if (content[i] === '\\' && i + 1 < content.length) {
+          // Escape sequence
+          result += content[i] + content[i + 1];
+          if (content[i + 1] === '\n') lineNumber++;
+          i += 2;
+        } else if (content[i] === quote) {
+          result += content[i];
+          i++;
+          break;
+        } else {
+          if (content[i] === '\n') lineNumber++;
+          result += content[i];
+          i++;
+        }
+      }
+
+      const stringEnd = result.length;
+      stringRanges.push({ start: stringStart, end: stringEnd });
+      continue;
+    }
+
+    result += content[i];
+    i++;
+  }
+
+  // Build line map from stripped content
+  const strippedLines = result.split('\n');
+  const finalLineMap: number[] = [];
+  let origLine = 1;
+  for (let idx = 0; idx < strippedLines.length; idx++) {
+    finalLineMap.push(origLine);
+    // Count newlines in original content to estimate line mapping
+    origLine++;
   }
 
   return {
-    stripped: strippedLines.join('\n'),
-    lineMap,
+    stripped: result,
+    lineMap: finalLineMap,
     stringRanges
   };
 }
@@ -193,16 +210,21 @@ function findOriginalLineNumber(
   return lineMap[linesBeforeMatch] || linesBeforeMatch + 1;
 }
 
+/**
+ * Scan file content for route patterns
+ * FB4: Accepts optional pre-read content to avoid double file reads
+ */
 async function scanFile(
   filePath: string,
-  frameworks: FrameworkPattern[]
+  frameworks: FrameworkPattern[],
+  preReadContent?: string
 ): Promise<Endpoint[]> {
   const endpoints: Endpoint[] = [];
 
   try {
-    const rawContent = fs.readFileSync(filePath, 'utf-8');
+    const rawContent = preReadContent ?? fs.readFileSync(filePath, 'utf-8');
 
-    // FB4: Strip comments before scanning
+    // Strip comments before scanning
     const { stripped: content, lineMap, stringRanges } = stripComments(rawContent);
 
     for (const framework of frameworks) {
@@ -212,7 +234,7 @@ async function scanFile(
 
         let match: RegExpExecArray | null;
         while ((match = pattern.exec(content)) !== null) {
-          // FB4: Skip matches that are inside string literals
+          // Skip matches that are inside string literals
           if (isInsideString(match.index, stringRanges)) {
             continue;
           }
@@ -230,7 +252,7 @@ async function scanFile(
         }
       }
     }
-  } catch (error) {
+  } catch {
     // Skip files that can't be read
   }
 
@@ -238,37 +260,82 @@ async function scanFile(
 }
 
 /**
- * FB4: Detect framework by analyzing import/require statements
+ * Detect framework by analyzing import/require statements
  * Uses stripped content to avoid false positives from comments
+ * FB3: Also checks stringRanges to avoid matching text inside string literals
  */
 function detectFramework(rawContent: string): FrameworkPattern[] {
   const detected: FrameworkPattern[] = [];
   
   // Strip comments to avoid false positives (e.g., "// import express" in a fastify file)
-  const { stripped: content } = stripComments(rawContent);
+  const { stripped: content, stringRanges } = stripComments(rawContent);
 
-  if (/require\s*\(\s*['"`]express['"`]\s*\)|from\s+['"`]express['"`]/i.test(content)) {
+  // Helper to check if a regex match is a real import (not inside a string literal other than the import itself)
+  const isRealImport = (pattern: RegExp): boolean => {
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(content)) !== null) {
+      // The match itself contains a string (the module name), but the require/from keyword
+      // should NOT be inside another string literal
+      // Check if the start of the match (the keyword part) is inside a string
+      const keywordStart = match.index;
+      let insideString = false;
+      for (const range of stringRanges) {
+        // Check if the keyword (not the module name) is inside a string
+        if (keywordStart >= range.start && keywordStart < range.end) {
+          insideString = true;
+          break;
+        }
+      }
+      if (!insideString) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  if (isRealImport(/require\s*\(\s*['"`]express['"`]\s*\)|from\s+['"`]express['"`]/gi)) {
     const framework = FRAMEWORKS.find(f => f.name === 'express');
     if (framework) detected.push(framework);
   }
 
-  if (/require\s*\(\s*['"`]fastify['"`]\s*\)|from\s+['"`]fastify['"`]/i.test(content)) {
+  if (isRealImport(/require\s*\(\s*['"`]fastify['"`]\s*\)|from\s+['"`]fastify['"`]/gi)) {
     const framework = FRAMEWORKS.find(f => f.name === 'fastify');
     if (framework) detected.push(framework);
   }
 
-  if (/require\s*\(\s*['"`]@?koa/i.test(content) || /from\s+['"`]@?koa/i.test(content)) {
+  if (isRealImport(/require\s*\(\s*['"`]@?koa/gi) || isRealImport(/from\s+['"`]@?koa/gi)) {
     const framework = FRAMEWORKS.find(f => f.name === 'koa');
     if (framework) detected.push(framework);
   }
 
-  if (/require\s*\(\s*['"`]hono['"`]\s*\)|from\s+['"`]hono['"`]/i.test(content)) {
+  if (isRealImport(/require\s*\(\s*['"`]hono['"`]\s*\)|from\s+['"`]hono['"`]/gi)) {
     const framework = FRAMEWORKS.find(f => f.name === 'hono');
     if (framework) detected.push(framework);
   }
 
   // If nothing detected, return all frameworks for generic scanning
   return detected.length > 0 ? detected : FRAMEWORKS;
+}
+
+/**
+ * Helper to scan a single file with caching of content
+ * FB4: Avoids reading file twice by passing content to both detectFramework and scanFile
+ */
+async function scanFileWithDetection(
+  filePath: string,
+  framework: DiscoveryOptions['framework'],
+  defaultFrameworks: FrameworkPattern[]
+): Promise<Endpoint[]> {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const detectedFrameworks = framework === 'auto' ? detectFramework(content) : defaultFrameworks;
+    // Pass content to scanFile to avoid re-reading
+    return await scanFile(filePath, detectedFrameworks, content);
+  } catch {
+    // FB5: Skip files that can't be read
+    return [];
+  }
 }
 
 export async function discoverEndpoints(
@@ -289,30 +356,31 @@ export async function discoverEndpoints(
     frameworksToScan = FRAMEWORKS;
   }
 
-  const stat = fs.statSync(targetPath);
+  // FB5: Handle fs.statSync exception gracefully
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(targetPath);
+  } catch {
+    // Return empty array for non-existent or inaccessible paths
+    return [];
+  }
 
   if (stat.isFile()) {
-    const content = fs.readFileSync(targetPath, 'utf-8');
-    const detectedFrameworks = framework === 'auto' ? detectFramework(content) : frameworksToScan;
-    const fileEndpoints = await scanFile(targetPath, detectedFrameworks);
+    const fileEndpoints = await scanFileWithDetection(targetPath, framework, frameworksToScan);
     endpoints.push(...fileEndpoints);
   } else if (stat.isDirectory()) {
-    const patterns = [
-      path.join(targetPath, '**/*.{js,ts,mjs,mts}')
-    ];
+    // FB1: Include .jsx, .tsx, .cjs, .cts extensions
+    const pattern = path.join(targetPath, '**/*.{js,ts,mjs,mts,jsx,tsx,cjs,cts}');
 
-    for (const pattern of patterns) {
-      const files = await glob(pattern, {
-        nodir: true,
-        ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/*.test.*', '**/*.spec.*']
-      });
+    const files = await glob(pattern, {
+      nodir: true,
+      ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/*.test.*', '**/*.spec.*']
+    });
 
-      for (const file of files) {
-        const content = fs.readFileSync(file, 'utf-8');
-        const detectedFrameworks = framework === 'auto' ? detectFramework(content) : frameworksToScan;
-        const fileEndpoints = await scanFile(file, detectedFrameworks);
-        endpoints.push(...fileEndpoints);
-      }
+    // FB4: Process files without re-reading
+    for (const file of files) {
+      const fileEndpoints = await scanFileWithDetection(file, framework, frameworksToScan);
+      endpoints.push(...fileEndpoints);
     }
   }
 
