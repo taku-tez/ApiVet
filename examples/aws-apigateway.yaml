@@ -1,0 +1,92 @@
+openapi: "3.0.0"
+info:
+  title: AWS API Gateway Example (Insecure)
+  version: "1.0.0"
+  description: Example AWS API Gateway spec with security issues
+
+servers:
+  - url: https://abc123.execute-api.us-east-1.amazonaws.com/prod
+    description: Production
+  - url: https://abc123.execute-api.us-east-1.amazonaws.com/staging
+    description: Staging environment
+  - url: http://192.168.1.50:3000
+    description: Internal development
+
+# Missing x-amazon-apigateway-request-validators
+# Missing x-amazon-apigateway-request-validator
+
+paths:
+  /users:
+    get:
+      summary: List users - no auth
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789:function:listUsers/invocations
+      responses:
+        "200":
+          description: User list
+    
+    post:
+      summary: Create user - Lambda proxy without validation
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789:function:createUser/invocations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        "201":
+          description: User created
+
+  /users/{id}:
+    get:
+      summary: Get user - no auth on parameterized path
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789:function:getUser/invocations
+      responses:
+        "200":
+          description: User details
+
+  /health:
+    get:
+      summary: Health check - mock integration (should not flag)
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        responses:
+          default:
+            statusCode: "200"
+      responses:
+        "200":
+          description: Healthy
+
+components:
+  securitySchemes:
+    cognitoAuth:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authtype: cognito_user_pools
+      x-amazon-apigateway-authorizer:
+        type: cognito_user_pools
+        providerARNs:
+          - arn:aws:cognito-idp:us-east-1:123456789:userpool/us-east-1_abc123

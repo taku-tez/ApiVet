@@ -988,6 +988,476 @@ export const rules: Rule[] = [
       
       return findings;
     }
+  },
+
+  // ============================================
+  // Cloud Provider Security Rules
+  // ============================================
+
+  // AWS API Gateway: Missing authorizer
+  {
+    id: 'APIVET026',
+    title: 'AWS API Gateway endpoint without authorizer',
+    description: 'AWS API Gateway endpoints should have authorization configured',
+    severity: 'high',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      const extSpec = spec as Record<string, unknown>;
+      
+      // Check if this is an AWS API Gateway spec
+      const isAwsSpec = JSON.stringify(spec).includes('x-amazon-apigateway');
+      if (!isAwsSpec) return findings;
+      
+      for (const [path, pathItem] of Object.entries(paths)) {
+        const methods = ['get', 'post', 'put', 'delete', 'patch'] as const;
+        for (const method of methods) {
+          const operation = pathItem[method] as Record<string, unknown> | undefined;
+          if (!operation) continue;
+          
+          // Check for x-amazon-apigateway-auth or security
+          const hasAwsAuth = operation['x-amazon-apigateway-auth'];
+          const hasSecurity = operation.security || spec.security;
+          const integration = operation['x-amazon-apigateway-integration'] as Record<string, unknown> | undefined;
+          
+          // Skip if it's a mock integration (often used for OPTIONS/CORS)
+          if (integration?.type === 'mock') continue;
+          
+          if (!hasAwsAuth && !hasSecurity) {
+            findings.push({
+              ruleId: 'APIVET026',
+              title: `AWS API Gateway endpoint without authorization`,
+              description: `The endpoint ${method.toUpperCase()} ${path} in AWS API Gateway has no authorizer configured. Consider adding a Lambda authorizer, Cognito user pool, or IAM authorization.`,
+              severity: 'high',
+              owaspCategory: 'API2:2023',
+              location: {
+                path: filePath,
+                endpoint: path,
+                method: method.toUpperCase()
+              },
+              remediation: 'Configure x-amazon-apigateway-auth or add a security requirement. Use Cognito user pools, Lambda authorizers, or IAM authorization for API Gateway.'
+            });
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // AWS API Gateway: Missing request validation
+  {
+    id: 'APIVET027',
+    title: 'AWS API Gateway without request validation',
+    description: 'AWS API Gateway should validate request parameters and body',
+    severity: 'medium',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const extSpec = spec as Record<string, unknown>;
+      
+      // Check if this is an AWS API Gateway spec
+      const isAwsSpec = JSON.stringify(spec).includes('x-amazon-apigateway');
+      if (!isAwsSpec) return findings;
+      
+      // Check for request validators at spec level
+      const validators = extSpec['x-amazon-apigateway-request-validators'] as Record<string, unknown> | undefined;
+      const defaultValidator = extSpec['x-amazon-apigateway-request-validator'] as string | undefined;
+      
+      if (!validators && !defaultValidator) {
+        findings.push({
+          ruleId: 'APIVET027',
+          title: 'AWS API Gateway missing request validation configuration',
+          description: 'The API Gateway specification does not define request validators. Request validation helps prevent malformed requests from reaching backend services.',
+          severity: 'medium',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Add x-amazon-apigateway-request-validators to define validators (e.g., "validate-body", "validate-params", "validate-body-and-params") and set x-amazon-apigateway-request-validator to enable validation.'
+        });
+      } else if (validators && !defaultValidator) {
+        // Validators defined but none set as default
+        findings.push({
+          ruleId: 'APIVET027',
+          title: 'AWS API Gateway request validators defined but not enabled',
+          description: 'Request validators are defined but no default validator is set. Validation will not occur unless explicitly enabled per operation.',
+          severity: 'low',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Set x-amazon-apigateway-request-validator at the API level or per operation to enable request validation.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // AWS API Gateway: API Key requirement
+  {
+    id: 'APIVET028',
+    title: 'AWS API Gateway endpoint without API key requirement',
+    description: 'Consider requiring API keys for usage tracking and throttling',
+    severity: 'info',
+    owaspCategory: 'API4:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      
+      // Check if this is an AWS API Gateway spec
+      const isAwsSpec = JSON.stringify(spec).includes('x-amazon-apigateway');
+      if (!isAwsSpec) return findings;
+      
+      let hasAnyApiKey = false;
+      
+      for (const [path, pathItem] of Object.entries(paths)) {
+        const methods = ['get', 'post', 'put', 'delete', 'patch'] as const;
+        for (const method of methods) {
+          const operation = pathItem[method] as Record<string, unknown> | undefined;
+          if (!operation) continue;
+          
+          const integration = operation['x-amazon-apigateway-integration'] as Record<string, unknown> | undefined;
+          if (integration?.type === 'mock') continue;
+          
+          // Check for API key requirement
+          const apiKeyRequired = (operation['x-amazon-apigateway-api-key-source'] as string) ||
+                                  (operation.security as Array<Record<string, string[]>> | undefined)?.some(s => 'api_key' in s);
+          
+          if (apiKeyRequired) {
+            hasAnyApiKey = true;
+          }
+        }
+      }
+      
+      if (!hasAnyApiKey) {
+        findings.push({
+          ruleId: 'APIVET028',
+          title: 'AWS API Gateway without API key requirements',
+          description: 'No endpoints require API keys. API keys enable usage plans, throttling, and tracking of API consumers.',
+          severity: 'info',
+          owaspCategory: 'API4:2023',
+          location: { path: filePath },
+          remediation: 'Consider adding API key requirements with usage plans to track and throttle API consumers. Configure x-amazon-apigateway-api-key-source and create usage plans.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // AWS: Cognito authorizer without scopes
+  {
+    id: 'APIVET029',
+    title: 'AWS Cognito authorizer without scope validation',
+    description: 'Cognito authorizers should validate OAuth2 scopes',
+    severity: 'medium',
+    owaspCategory: 'API5:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const securitySchemes = spec.components?.securitySchemes || {};
+      
+      for (const [name, scheme] of Object.entries(securitySchemes)) {
+        const extScheme = scheme as unknown as Record<string, unknown>;
+        const authorizer = extScheme['x-amazon-apigateway-authorizer'] as Record<string, unknown> | undefined;
+        
+        if (authorizer?.type === 'cognito_user_pools') {
+          const scopes = authorizer.providerARNs as string[] | undefined;
+          
+          // Check if any operations use this scheme without scopes
+          const paths = spec.paths || {};
+          for (const [path, pathItem] of Object.entries(paths)) {
+            const methods = ['get', 'post', 'put', 'delete', 'patch'] as const;
+            for (const method of methods) {
+              const operation = pathItem[method];
+              if (!operation?.security) continue;
+              
+              for (const secReq of operation.security) {
+                if (name in secReq && (!secReq[name] || secReq[name].length === 0)) {
+                  findings.push({
+                    ruleId: 'APIVET029',
+                    title: `Cognito authorizer "${name}" used without scopes`,
+                    description: `The endpoint ${method.toUpperCase()} ${path} uses Cognito authorizer "${name}" but doesn't require any OAuth2 scopes. This may allow broader access than intended.`,
+                    severity: 'medium',
+                    owaspCategory: 'API5:2023',
+                    location: {
+                      path: filePath,
+                      endpoint: path,
+                      method: method.toUpperCase()
+                    },
+                    remediation: 'Specify required OAuth2 scopes in the security requirement to enforce fine-grained access control.'
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // Azure API Management: Missing policies hint
+  {
+    id: 'APIVET030',
+    title: 'Azure APIM integration detected',
+    description: 'Ensure Azure API Management policies are properly configured',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      // Check for Azure APIM URLs
+      const isAzureApim = servers.some(s => 
+        s.url.includes('.azure-api.net') || 
+        s.url.includes('management.azure.com')
+      );
+      
+      if (isAzureApim) {
+        findings.push({
+          ruleId: 'APIVET030',
+          title: 'Azure API Management detected',
+          description: 'This API appears to use Azure API Management. Ensure inbound/outbound policies are configured for security (JWT validation, rate limiting, IP filtering, CORS).',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Review Azure APIM policies: validate-jwt for token validation, rate-limit-by-key for throttling, ip-filter for access control, and cors for cross-origin requests.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // GCP: Cloud Endpoints / API Gateway detection
+  {
+    id: 'APIVET031',
+    title: 'GCP Cloud Endpoints detected',
+    description: 'Ensure GCP API security features are properly configured',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const extSpec = spec as Record<string, unknown>;
+      
+      // Check for GCP-specific extensions
+      const hasGoogleEndpoints = extSpec['x-google-endpoints'] !== undefined;
+      const hasGoogleBackend = JSON.stringify(spec).includes('x-google-backend');
+      const servers = spec.servers || [];
+      const isGcpUrl = servers.some(s => 
+        s.url.includes('.endpoints.') || 
+        s.url.includes('.run.app') ||
+        s.url.includes('.cloudfunctions.net')
+      );
+      
+      if (hasGoogleEndpoints || hasGoogleBackend || isGcpUrl) {
+        findings.push({
+          ruleId: 'APIVET031',
+          title: 'GCP Cloud Endpoints/API Gateway detected',
+          description: 'This API appears to use GCP Cloud Endpoints or API Gateway. Ensure authentication (API keys, Firebase Auth, or service accounts) and quotas are properly configured.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Configure x-google-endpoints for DNS and authentication. Use securityDefinitions with API keys or OAuth2. Set x-google-quota for rate limiting.'
+        });
+        
+        // Check for missing authentication in GCP
+        const googleEndpoints = extSpec['x-google-endpoints'] as Array<Record<string, unknown>> | undefined;
+        if (googleEndpoints) {
+          for (const endpoint of googleEndpoints) {
+            if (endpoint.allowCors && !endpoint.name) {
+              findings.push({
+                ruleId: 'APIVET031',
+                title: 'GCP endpoint allows CORS without explicit configuration',
+                description: 'A GCP endpoint has allowCors enabled. Ensure CORS is intentional and properly restricted.',
+                severity: 'low',
+                owaspCategory: 'API8:2023',
+                location: { path: filePath },
+                remediation: 'Review CORS settings and restrict allowed origins in GCP Cloud Endpoints configuration.'
+              });
+            }
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // Cloud: Staging/Development URL in production spec
+  {
+    id: 'APIVET032',
+    title: 'Non-production environment URL detected',
+    description: 'API specification contains staging or development URLs',
+    severity: 'medium',
+    owaspCategory: 'API9:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      const devPatterns = [
+        'staging', 'stage', 'dev', 'development', 'test', 'sandbox', 
+        'qa', 'uat', 'preprod', 'pre-prod', 'demo', 'preview'
+      ];
+      
+      for (const server of servers) {
+        const url = server.url.toLowerCase();
+        const description = (server.description || '').toLowerCase();
+        
+        for (const pattern of devPatterns) {
+          if (url.includes(pattern) || description.includes(pattern)) {
+            findings.push({
+              ruleId: 'APIVET032',
+              title: `Non-production URL detected: ${server.url}`,
+              description: `Server URL "${server.url}" appears to be a ${pattern} environment. Ensure production specifications don't expose development endpoints.`,
+              severity: 'medium',
+              owaspCategory: 'API9:2023',
+              location: { path: filePath },
+              remediation: 'Remove non-production URLs from production API specifications. Use environment variables or separate spec files for different environments.'
+            });
+            break;
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // Cloud: Internal/Private API exposure
+  {
+    id: 'APIVET033',
+    title: 'Internal API URL potentially exposed',
+    description: 'API specification contains internal or private network URLs',
+    severity: 'high',
+    owaspCategory: 'API9:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      const internalPatterns = [
+        /^https?:\/\/10\.\d+\.\d+\.\d+/,
+        /^https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+/,
+        /^https?:\/\/192\.168\.\d+\.\d+/,
+        /^https?:\/\/[^/]*\.internal[./]/,
+        /^https?:\/\/[^/]*\.local[./]/,
+        /^https?:\/\/[^/]*\.corp[./]/,
+        /^https?:\/\/[^/]*\.private[./]/
+      ];
+      
+      for (const server of servers) {
+        for (const pattern of internalPatterns) {
+          if (pattern.test(server.url)) {
+            findings.push({
+              ruleId: 'APIVET033',
+              title: `Internal network URL exposed: ${server.url}`,
+              description: `Server URL "${server.url}" appears to be an internal/private network address. Exposing internal URLs in API specifications may leak infrastructure details.`,
+              severity: 'high',
+              owaspCategory: 'API9:2023',
+              location: { path: filePath },
+              remediation: 'Remove internal URLs from public API specifications. Use relative paths or environment-specific configuration for internal APIs.'
+            });
+            break;
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // AWS Lambda: Proxy integration without input validation
+  {
+    id: 'APIVET034',
+    title: 'AWS Lambda proxy integration bypasses API Gateway validation',
+    description: 'Lambda proxy integrations pass raw requests to Lambda',
+    severity: 'medium',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      
+      for (const [path, pathItem] of Object.entries(paths)) {
+        const methods = ['get', 'post', 'put', 'delete', 'patch'] as const;
+        for (const method of methods) {
+          const operation = pathItem[method] as Record<string, unknown> | undefined;
+          if (!operation) continue;
+          
+          const integration = operation['x-amazon-apigateway-integration'] as Record<string, unknown> | undefined;
+          
+          if (integration?.type === 'aws_proxy' || integration?.type === 'AWS_PROXY') {
+            // Check if there's request validation
+            const hasValidator = operation['x-amazon-apigateway-request-validator'] !== undefined;
+            const hasRequestBody = operation.requestBody !== undefined;
+            
+            if (!hasValidator && hasRequestBody) {
+              findings.push({
+                ruleId: 'APIVET034',
+                title: `Lambda proxy integration without request validation`,
+                description: `The endpoint ${method.toUpperCase()} ${path} uses AWS Lambda proxy integration with a request body but no request validator. Raw requests are passed directly to Lambda without API Gateway validation.`,
+                severity: 'medium',
+                owaspCategory: 'API8:2023',
+                location: {
+                  path: filePath,
+                  endpoint: path,
+                  method: method.toUpperCase()
+                },
+                remediation: 'Add x-amazon-apigateway-request-validator to validate request body and parameters before passing to Lambda. Alternatively, implement validation in the Lambda function.'
+              });
+            }
+          }
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // Cloud: Missing CORS configuration for browser access
+  {
+    id: 'APIVET035',
+    title: 'Cloud API without CORS configuration',
+    description: 'APIs accessed from browsers need CORS configuration',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const paths = spec.paths || {};
+      const servers = spec.servers || [];
+      
+      // Only check for cloud-hosted APIs
+      const isCloudHosted = servers.some(s => 
+        s.url.includes('.amazonaws.com') ||
+        s.url.includes('.azure-api.net') ||
+        s.url.includes('.run.app') ||
+        s.url.includes('.cloudfunctions.net') ||
+        s.url.includes('.execute-api.')
+      );
+      
+      if (!isCloudHosted) return findings;
+      
+      // Check if OPTIONS method is defined for any path
+      let hasOptionsMethod = false;
+      
+      for (const [path, pathItem] of Object.entries(paths)) {
+        if (pathItem.options) {
+          hasOptionsMethod = true;
+          break;
+        }
+      }
+      
+      if (!hasOptionsMethod && Object.keys(paths).length > 0) {
+        findings.push({
+          ruleId: 'APIVET035',
+          title: 'Cloud API without CORS preflight handlers',
+          description: 'This cloud-hosted API does not define OPTIONS methods for CORS preflight requests. If this API is accessed from web browsers, CORS must be configured.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'If browser access is needed, configure CORS at the API gateway level (AWS API Gateway CORS, Azure APIM cors policy, or GCP allowCors). For server-to-server APIs, CORS may not be needed.'
+        });
+      }
+      
+      return findings;
+    }
   }
 ];
 

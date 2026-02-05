@@ -604,9 +604,212 @@ describe('ApiVet Rules', () => {
     });
   });
 
+  // ============================================
+  // Cloud Provider Rules
+  // ============================================
+
+  describe('APIVET026 - AWS API Gateway Authorization', () => {
+    it('should detect AWS API Gateway endpoint without authorizer', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/items': {
+            get: {
+              responses: { '200': { description: 'OK' } },
+              'x-amazon-apigateway-integration': {
+                type: 'aws_proxy',
+                uri: 'arn:aws:lambda:...'
+              }
+            } as any
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const awsFinding = findings.find(f => f.ruleId === 'APIVET026');
+      
+      expect(awsFinding).toBeDefined();
+      expect(awsFinding?.severity).toBe('high');
+    });
+  });
+
+  describe('APIVET027 - AWS Request Validation', () => {
+    it('should detect missing request validators', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        'x-amazon-apigateway-integration': {} as any,
+        paths: {
+          '/items': {
+            get: {
+              responses: { '200': { description: 'OK' } }
+            }
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const validatorFinding = findings.find(f => f.ruleId === 'APIVET027');
+      
+      expect(validatorFinding).toBeDefined();
+    });
+  });
+
+  describe('APIVET032 - Non-Production URL', () => {
+    it('should detect staging URLs', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://api-staging.example.com' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const stagingFinding = findings.find(f => f.ruleId === 'APIVET032');
+      
+      expect(stagingFinding).toBeDefined();
+      expect(stagingFinding?.severity).toBe('medium');
+    });
+
+    it('should detect dev URLs', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://dev.api.example.com', description: 'Development server' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const devFinding = findings.find(f => f.ruleId === 'APIVET032');
+      
+      expect(devFinding).toBeDefined();
+    });
+  });
+
+  describe('APIVET033 - Internal URL Exposure', () => {
+    it('should detect private IP addresses', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'http://192.168.1.100:8080' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const internalFinding = findings.find(f => f.ruleId === 'APIVET033');
+      
+      expect(internalFinding).toBeDefined();
+      expect(internalFinding?.severity).toBe('high');
+    });
+
+    it('should detect 10.x.x.x addresses', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://10.0.0.50/api' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const internalFinding = findings.find(f => f.ruleId === 'APIVET033');
+      
+      expect(internalFinding).toBeDefined();
+    });
+
+    it('should detect .internal domains', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://api.internal.company.com' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const internalFinding = findings.find(f => f.ruleId === 'APIVET033');
+      
+      expect(internalFinding).toBeDefined();
+    });
+  });
+
+  describe('APIVET034 - Lambda Proxy Validation', () => {
+    it('should detect Lambda proxy without validation', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        paths: {
+          '/items': {
+            post: {
+              requestBody: {
+                content: { 'application/json': { schema: { type: 'object' } } }
+              },
+              responses: { '200': { description: 'OK' } },
+              'x-amazon-apigateway-integration': {
+                type: 'aws_proxy',
+                uri: 'arn:aws:lambda:...'
+              }
+            } as any
+          }
+        }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const proxyFinding = findings.find(f => f.ruleId === 'APIVET034');
+      
+      expect(proxyFinding).toBeDefined();
+      expect(proxyFinding?.severity).toBe('medium');
+    });
+  });
+
+  describe('APIVET030 - Azure APIM Detection', () => {
+    it('should detect Azure APIM URLs', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://myapi.azure-api.net' }
+        ],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const azureFinding = findings.find(f => f.ruleId === 'APIVET030');
+      
+      expect(azureFinding).toBeDefined();
+    });
+  });
+
+  describe('APIVET031 - GCP Detection', () => {
+    it('should detect GCP Cloud Run URLs', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://myservice-abc123.run.app' }
+        ],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const gcpFinding = findings.find(f => f.ruleId === 'APIVET031');
+      
+      expect(gcpFinding).toBeDefined();
+    });
+  });
+
   describe('Rule count', () => {
-    it('should have at least 25 rules', () => {
-      expect(rules.length).toBeGreaterThanOrEqual(25);
+    it('should have at least 35 rules', () => {
+      expect(rules.length).toBeGreaterThanOrEqual(35);
     });
   });
 });
