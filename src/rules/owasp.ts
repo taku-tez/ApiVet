@@ -3,7 +3,7 @@
  * APIVET001 - APIVET015
  */
 
-import type { OpenApiSpec, Finding } from '../types.js';
+import type { Finding } from '../types.js';
 import {
   Rule,
   HTTP_METHODS,
@@ -642,6 +642,7 @@ export const owaspRules: Rule[] = [
           // Check for rate limit headers in any response
           let hasRateLimitHeader = false;
           for (const response of Object.values(responses)) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Response type varies
             const headerNames = getResponseHeaderNames(response as any, spec);
             if (headerNames.some(h => 
               h.includes('ratelimit') || 

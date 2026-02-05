@@ -3,14 +3,12 @@
  * APIVET030, APIVET039-040, APIVET056-065
  */
 
-import type { OpenApiSpec, Finding } from '../types.js';
+import type { Finding } from '../types.js';
 import {
   Rule,
   HTTP_METHODS,
   isAzureApim,
-  isAzureService,
   hasGlobalSecurity,
-  hasSecuritySchemes,
   createFinding,
   getResponseHeaderNames
 } from './utils.js';
@@ -339,6 +337,7 @@ export const azureRules: Rule[] = [
           const operation = pathItem[method];
           if (!operation?.parameters) continue;
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Parameter type varies
           if (operation.parameters.some((p: any) =>
             p.name?.toLowerCase() === 'api-version' ||
             p.name?.toLowerCase() === 'x-api-version'
@@ -357,6 +356,7 @@ export const azureRules: Rule[] = [
           const operation = pathItem[method];
           if (!operation?.parameters) continue;
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Parameter type varies
           if (operation.parameters.some((p: any) =>
             p.in === 'header' && (
               p.name?.toLowerCase() === 'api-version' ||
@@ -438,8 +438,6 @@ export const azureRules: Rule[] = [
     check: (spec, filePath) => {
       const findings: Finding[] = [];
       if (!isAzureApim(spec.servers)) return findings;
-
-      const specStr = JSON.stringify(spec);
 
       // Check x-ms-paths and any backend URL references
       const extSpec = spec as Record<string, unknown>;
@@ -550,7 +548,9 @@ export const azureRules: Rule[] = [
         }
 
         // Check openIdConnectUrl
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenAPI 3.0 type
         if (scheme.type === 'openIdConnect' as any) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenAPI 3.0 openIdConnectUrl
           const oidcUrl = ((scheme as any).openIdConnectUrl || '').toLowerCase();
           if (oidcUrl.includes('login.microsoftonline.com') || oidcUrl.includes('login.microsoft.com')) {
             isEntraId = true;

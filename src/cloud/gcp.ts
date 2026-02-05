@@ -283,12 +283,12 @@ export async function discoverGcpApis(
               // Only take the first active config
               break;
             }
-          } catch (error) {
+          } catch {
             // API might not have configs
           }
         }
       }
-    } catch (error) {
+    } catch {
       // Cloud Endpoints might not be enabled
     }
 

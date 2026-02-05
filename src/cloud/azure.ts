@@ -198,6 +198,7 @@ async function scanApimService(
 /**
  * Create a minimal OpenAPI spec when export fails
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Azure SDK ApiContract type
 function createMinimalSpec(api: any, serviceName: string, failureReason?: string): OpenApiSpec {
   const baseDescription = api.description || `Azure API Management API: ${api.name}`;
   const description = failureReason

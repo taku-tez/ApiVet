@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { scanOpenApiSpec, type ScanResult } from '../scanner/index.js';
+import { scanOpenApiSpec } from '../scanner/index.js';
 import { formatScanResults, formatScanResultsJson } from '../formatter.js';
 import { formatSarif } from '../sarif.js';
 import { filterFindings, parseRuleFilters } from './cloud-utils.js';
@@ -42,7 +42,7 @@ export async function scanCommand(
   const { onlyRuleIds, excludeRuleIds } = parseRuleFilters(onlyRules, excludeRules);
   
   try {
-    let results = await scanOpenApiSpec(targetPath, {
+    const results = await scanOpenApiSpec(targetPath, {
       recursive,
       severity: severity as Severity | undefined,
       extraIgnore

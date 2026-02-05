@@ -3,7 +3,7 @@
  * APIVET031, APIVET041-042, APIVET066-075
  */
 
-import type { OpenApiSpec, Finding } from '../types.js';
+import type { Finding } from '../types.js';
 import {
   Rule,
   HTTP_METHODS,
@@ -309,7 +309,6 @@ export const gcpRules: Rule[] = [
       const findings: Finding[] = [];
       if (!isGcpApi(spec)) return findings;
 
-      const extSpec = spec as Record<string, unknown>;
       const paths = spec.paths || {};
 
       // Check for x-google-quota
@@ -515,6 +514,7 @@ export const gcpRules: Rule[] = [
           const operation = pathItem[method];
           if (!operation?.parameters) continue;
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Parameter type varies
           if (operation.parameters.some((p: any) =>
             p.name?.toLowerCase() === 'version' ||
             p.name?.toLowerCase() === 'api-version' ||

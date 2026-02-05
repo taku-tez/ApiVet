@@ -3,8 +3,8 @@
  * APIVET032-033, APIVET035
  */
 
-import type { OpenApiSpec, Finding } from '../types.js';
-import { Rule, PRIVATE_IP_PATTERNS, DEV_ENVIRONMENT_PATTERNS, HTTP_METHODS, createFinding } from './utils.js';
+import type { Finding } from '../types.js';
+import { Rule, PRIVATE_IP_PATTERNS, DEV_ENVIRONMENT_PATTERNS, createFinding } from './utils.js';
 
 export const generalRules: Rule[] = [
   // Non-production URL

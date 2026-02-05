@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { checkEndpoint, type CheckResult } from '../checker/index.js';
+import { checkEndpoint } from '../checker/index.js';
 import { formatCheckResult, formatCheckResultJson } from '../formatter.js';
 
 interface CheckCommandOptions {

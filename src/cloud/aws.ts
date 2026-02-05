@@ -10,7 +10,6 @@ import {
   GetMethodCommand,
   GetAuthorizersCommand,
   type RestApi,
-  type Resource,
 } from '@aws-sdk/client-api-gateway';
 
 import {
@@ -19,7 +18,6 @@ import {
   GetRoutesCommand,
   GetAuthorizersCommand as GetAuthorizersV2Command,
   type Api,
-  type Route,
 } from '@aws-sdk/client-apigatewayv2';
 
 import type { OpenApiSpec } from '../types.js';
@@ -186,7 +184,7 @@ async function convertRestApiToOpenApi(
           }
           
           pathItem[method.toLowerCase()] = operation;
-        } catch (error) {
+        } catch {
           // Method might not be accessible, add basic info
           pathItem[method.toLowerCase()] = {
             responses: { '200': { description: 'Success' } }
@@ -396,7 +394,8 @@ async function convertWebSocketApiToOpenApi(
     }
 
     spec.paths![path] = {
-      get: operation as any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      get: operation as any  // WebSocket operations have custom structure
     };
   }
 

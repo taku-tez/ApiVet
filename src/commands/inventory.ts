@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { discoverEndpoints, type Endpoint } from '../inventory/index.js';
+import { discoverEndpoints } from '../inventory/index.js';
 import { formatInventory, formatInventoryJson } from '../formatter.js';
 
 interface InventoryCommandOptions {

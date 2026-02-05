@@ -6,7 +6,6 @@
 import type { OpenApiSpec, Finding } from '../types.js';
 import {
   Rule,
-  HTTP_METHODS,
   hasGlobalSecurity,
   hasSecuritySchemes,
   createFinding,

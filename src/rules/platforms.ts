@@ -3,7 +3,7 @@
  * APIVET043-047, APIVET050-055
  */
 
-import type { OpenApiSpec, Finding } from '../types.js';
+import type { Finding } from '../types.js';
 import { Rule, createFinding } from './utils.js';
 
 export const platformRules: Rule[] = [
