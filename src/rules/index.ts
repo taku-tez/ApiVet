@@ -1458,6 +1458,678 @@ export const rules: Rule[] = [
       
       return findings;
     }
+  },
+
+  // ============================================
+  // Extended Cloud Provider Rules
+  // ============================================
+
+  // AWS: AppSync GraphQL detection
+  {
+    id: 'APIVET036',
+    title: 'AWS AppSync GraphQL API detected',
+    description: 'GraphQL APIs require specific security considerations',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isAppSync = servers.some(s => 
+        s.url.includes('.appsync-api.') ||
+        s.url.includes('appsync.')
+      );
+      
+      if (isAppSync) {
+        findings.push({
+          ruleId: 'APIVET036',
+          title: 'AWS AppSync GraphQL API detected',
+          description: 'This API uses AWS AppSync. Ensure proper authorization (API key, Cognito, IAM, or Lambda) and implement field-level resolvers with appropriate permissions.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Configure AppSync authorization modes. Use @auth directives in GraphQL schema. Implement resolver-level authorization for sensitive fields. Enable logging and monitoring.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // AWS: CloudFront with API Gateway
+  {
+    id: 'APIVET037',
+    title: 'AWS API Gateway without CloudFront',
+    description: 'Consider using CloudFront for DDoS protection and caching',
+    severity: 'info',
+    owaspCategory: 'API4:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      // Check for direct API Gateway URL without CloudFront
+      const hasDirectApiGateway = servers.some(s => 
+        s.url.includes('.execute-api.') && 
+        !s.url.includes('.cloudfront.net')
+      );
+      
+      const hasCloudFront = servers.some(s => 
+        s.url.includes('.cloudfront.net')
+      );
+      
+      if (hasDirectApiGateway && !hasCloudFront) {
+        findings.push({
+          ruleId: 'APIVET037',
+          title: 'AWS API Gateway exposed without CloudFront',
+          description: 'The API Gateway endpoint is directly exposed. Consider placing CloudFront in front for DDoS protection, caching, and geographic restrictions.',
+          severity: 'info',
+          owaspCategory: 'API4:2023',
+          location: { path: filePath },
+          remediation: 'Configure Amazon CloudFront distribution with API Gateway as origin. Enable AWS WAF for additional protection. Use custom domain with CloudFront for production.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // AWS: WAF recommendation
+  {
+    id: 'APIVET038',
+    title: 'AWS API without WAF indication',
+    description: 'AWS APIs should consider WAF protection',
+    severity: 'low',
+    owaspCategory: 'API4:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      const specStr = JSON.stringify(spec);
+      
+      const isAws = servers.some(s => 
+        s.url.includes('.amazonaws.com') ||
+        s.url.includes('.execute-api.')
+      );
+      
+      // Check for any WAF-related mentions
+      const hasWafMention = specStr.toLowerCase().includes('waf') ||
+                           specStr.includes('x-waf') ||
+                           specStr.includes('x-amazon-waf');
+      
+      if (isAws && !hasWafMention) {
+        findings.push({
+          ruleId: 'APIVET038',
+          title: 'AWS API without WAF configuration indicated',
+          description: 'This AWS API does not mention WAF protection. AWS WAF provides protection against common web exploits and bots.',
+          severity: 'low',
+          owaspCategory: 'API4:2023',
+          location: { path: filePath },
+          remediation: 'Consider enabling AWS WAF with managed rule groups (AWSManagedRulesCommonRuleSet, AWSManagedRulesKnownBadInputsRuleSet) for API Gateway or CloudFront.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Azure: Function App / App Service detection
+  {
+    id: 'APIVET039',
+    title: 'Azure Functions / App Service detected',
+    description: 'Ensure Azure-specific authentication is properly configured',
+    severity: 'info',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isAzureFunction = servers.some(s => 
+        s.url.includes('.azurewebsites.net') ||
+        s.url.includes('.azure-mobile.net')
+      );
+      
+      if (isAzureFunction) {
+        findings.push({
+          ruleId: 'APIVET039',
+          title: 'Azure Functions / App Service detected',
+          description: 'This API appears to be hosted on Azure Functions or App Service. Ensure built-in authentication (Easy Auth) or custom authentication is properly configured.',
+          severity: 'info',
+          owaspCategory: 'API2:2023',
+          location: { path: filePath },
+          remediation: 'Enable Azure App Service Authentication (Easy Auth) with Microsoft Entra ID, or implement custom JWT validation. Configure CORS settings in Azure portal.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Azure: Front Door detection
+  {
+    id: 'APIVET040',
+    title: 'Azure Front Door detected',
+    description: 'Ensure Azure Front Door security features are enabled',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isFrontDoor = servers.some(s => 
+        s.url.includes('.azurefd.net') ||
+        s.url.includes('.afd.') ||
+        s.url.includes('frontdoor')
+      );
+      
+      if (isFrontDoor) {
+        findings.push({
+          ruleId: 'APIVET040',
+          title: 'Azure Front Door detected',
+          description: 'This API uses Azure Front Door. Ensure WAF policies and DDoS protection are properly configured.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Enable Azure WAF policy on Front Door with OWASP rule sets. Configure rate limiting rules. Enable DDoS protection. Use Private Link for backend connections.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // GCP: Cloud Run authentication
+  {
+    id: 'APIVET041',
+    title: 'GCP Cloud Run without authentication indication',
+    description: 'Cloud Run services should have authentication configured',
+    severity: 'medium',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isCloudRun = servers.some(s => s.url.includes('.run.app'));
+      
+      if (isCloudRun) {
+        // Check if any authentication is defined
+        const hasAuth = spec.security && spec.security.length > 0;
+        const hasSecuritySchemes = spec.components?.securitySchemes && 
+                                   Object.keys(spec.components.securitySchemes).length > 0;
+        
+        if (!hasAuth && !hasSecuritySchemes) {
+          findings.push({
+            ruleId: 'APIVET041',
+            title: 'GCP Cloud Run service without authentication defined',
+            description: 'This Cloud Run service does not define authentication in the OpenAPI spec. Ensure the service is configured to require authentication (IAM invoker permission or custom auth).',
+            severity: 'medium',
+            owaspCategory: 'API2:2023',
+            location: { path: filePath },
+            remediation: 'Configure Cloud Run to require authentication (allUsers vs allAuthenticatedUsers vs specific IAM members). For public APIs, implement custom authentication (Firebase Auth, Identity Platform, or custom JWT).'
+          });
+        }
+      }
+      
+      return findings;
+    }
+  },
+
+  // GCP: Firebase integration
+  {
+    id: 'APIVET042',
+    title: 'Firebase / Identity Platform authentication detected',
+    description: 'Ensure Firebase security rules are properly configured',
+    severity: 'info',
+    owaspCategory: 'API2:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const specStr = JSON.stringify(spec).toLowerCase();
+      
+      const isFirebase = specStr.includes('firebase') ||
+                        specStr.includes('identitytoolkit.googleapis.com') ||
+                        specStr.includes('securetoken.googleapis.com');
+      
+      if (isFirebase) {
+        findings.push({
+          ruleId: 'APIVET042',
+          title: 'Firebase / Identity Platform authentication detected',
+          description: 'This API uses Firebase Authentication or Identity Platform. Ensure proper token validation and security rules.',
+          severity: 'info',
+          owaspCategory: 'API2:2023',
+          location: { path: filePath },
+          remediation: 'Validate Firebase ID tokens server-side. Check token expiration and issuer. Implement proper Firestore/RTDB security rules. Enable App Check for additional security.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Cloudflare: Workers / API Shield detection
+  {
+    id: 'APIVET043',
+    title: 'Cloudflare Workers / Pages detected',
+    description: 'Ensure Cloudflare security features are enabled',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isCloudflare = servers.some(s => 
+        s.url.includes('.workers.dev') ||
+        s.url.includes('.pages.dev') ||
+        s.url.includes('cloudflare')
+      );
+      
+      if (isCloudflare) {
+        findings.push({
+          ruleId: 'APIVET043',
+          title: 'Cloudflare Workers / Pages detected',
+          description: 'This API uses Cloudflare Workers or Pages. Consider enabling API Shield for schema validation and anomaly detection.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Enable Cloudflare API Shield for schema validation. Configure rate limiting rules. Use Access for authentication. Enable Bot Management for additional protection.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Vercel: Edge Functions detection
+  {
+    id: 'APIVET044',
+    title: 'Vercel deployment detected',
+    description: 'Ensure Vercel security features are configured',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isVercel = servers.some(s => 
+        s.url.includes('.vercel.app') ||
+        s.url.includes('.now.sh')
+      );
+      
+      if (isVercel) {
+        findings.push({
+          ruleId: 'APIVET044',
+          title: 'Vercel deployment detected',
+          description: 'This API is deployed on Vercel. Ensure proper authentication and consider Vercel Firewall for additional protection.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Configure environment variables securely. Use Vercel Authentication for protected routes. Enable Vercel Firewall for DDoS protection. Consider Edge Middleware for request validation.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Netlify detection
+  {
+    id: 'APIVET045',
+    title: 'Netlify deployment detected',
+    description: 'Ensure Netlify security features are configured',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isNetlify = servers.some(s => 
+        s.url.includes('.netlify.app') ||
+        s.url.includes('.netlify.com') ||
+        s.url.includes('netlify')
+      );
+      
+      if (isNetlify) {
+        findings.push({
+          ruleId: 'APIVET045',
+          title: 'Netlify deployment detected',
+          description: 'This API is deployed on Netlify. Ensure proper function authentication and consider Netlify security headers.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Configure security headers in netlify.toml. Use Netlify Identity for authentication. Secure environment variables. Enable branch protection for production.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Kubernetes Ingress detection
+  {
+    id: 'APIVET046',
+    title: 'Kubernetes Ingress pattern detected',
+    description: 'Ensure Kubernetes Ingress security is properly configured',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const specStr = JSON.stringify(spec).toLowerCase();
+      const servers = spec.servers || [];
+      
+      const isK8sIngress = specStr.includes('kubernetes') ||
+                          specStr.includes('nginx.ingress') ||
+                          specStr.includes('traefik') ||
+                          specStr.includes('istio') ||
+                          servers.some(s => s.url.includes('.svc.cluster.local'));
+      
+      if (isK8sIngress) {
+        findings.push({
+          ruleId: 'APIVET046',
+          title: 'Kubernetes / Service Mesh pattern detected',
+          description: 'This API appears to use Kubernetes Ingress or Service Mesh. Ensure proper network policies and authentication.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Configure TLS termination at Ingress. Use network policies for pod-to-pod communication. Enable mTLS with service mesh (Istio/Linkerd). Implement rate limiting at Ingress level.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Kong Gateway detection
+  {
+    id: 'APIVET047',
+    title: 'Kong Gateway pattern detected',
+    description: 'Ensure Kong security plugins are enabled',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const specStr = JSON.stringify(spec).toLowerCase();
+      
+      const isKong = specStr.includes('x-kong') ||
+                    specStr.includes('konghq') ||
+                    specStr.includes('kong-admin');
+      
+      if (isKong) {
+        findings.push({
+          ruleId: 'APIVET047',
+          title: 'Kong Gateway detected',
+          description: 'This API uses Kong Gateway. Ensure security plugins (key-auth, jwt, oauth2, rate-limiting) are properly configured.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Enable Kong security plugins: key-auth/jwt/oauth2 for authentication, rate-limiting for throttling, ip-restriction for access control, bot-detection for protection.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // AWS: HTTP API vs REST API
+  {
+    id: 'APIVET048',
+    title: 'AWS HTTP API detected',
+    description: 'HTTP APIs have different security features than REST APIs',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      const specStr = JSON.stringify(spec);
+      
+      // HTTP API uses different URL pattern and lacks some REST API features
+      const hasHttpApiMarkers = specStr.includes('x-amazon-apigateway-cors') ||
+                               specStr.includes('payloadFormatVersion');
+      
+      const isApiGateway = servers.some(s => s.url.includes('.execute-api.'));
+      
+      if (isApiGateway && hasHttpApiMarkers) {
+        findings.push({
+          ruleId: 'APIVET048',
+          title: 'AWS API Gateway HTTP API detected',
+          description: 'This appears to be an HTTP API (not REST API). HTTP APIs have limited features: no WAF integration, limited request validation, and different authorizer options.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'For HTTP APIs: use JWT authorizers (not IAM/Cognito authorizers), implement request validation in Lambda, consider REST API if WAF integration is needed.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // AWS: Private API detection
+  {
+    id: 'APIVET049',
+    title: 'AWS Private API Gateway consideration',
+    description: 'Consider using private API endpoints for internal services',
+    severity: 'info',
+    owaspCategory: 'API9:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      const specStr = JSON.stringify(spec).toLowerCase();
+      
+      const isAwsApi = servers.some(s => s.url.includes('.execute-api.'));
+      const isInternalApi = specStr.includes('internal') || 
+                           specStr.includes('private') ||
+                           specStr.includes('backend');
+      const hasVpcEndpoint = specStr.includes('vpce-') || 
+                            specStr.includes('x-amazon-apigateway-endpoint-configuration');
+      
+      if (isAwsApi && isInternalApi && !hasVpcEndpoint) {
+        findings.push({
+          ruleId: 'APIVET049',
+          title: 'Consider AWS Private API for internal service',
+          description: 'This API appears to be for internal use but may be publicly accessible. Consider using a private API Gateway endpoint with VPC endpoint.',
+          severity: 'info',
+          owaspCategory: 'API9:2023',
+          location: { path: filePath },
+          remediation: 'Configure API Gateway as PRIVATE endpoint type. Create VPC endpoint for API Gateway. Use resource policies to restrict access to specific VPCs.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Supabase detection
+  {
+    id: 'APIVET050',
+    title: 'Supabase API detected',
+    description: 'Ensure Supabase Row Level Security is properly configured',
+    severity: 'medium',
+    owaspCategory: 'API1:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isSupabase = servers.some(s => 
+        s.url.includes('.supabase.co') ||
+        s.url.includes('supabase')
+      );
+      
+      if (isSupabase) {
+        findings.push({
+          ruleId: 'APIVET050',
+          title: 'Supabase API detected',
+          description: 'This API uses Supabase. Ensure Row Level Security (RLS) policies are enabled on all tables and proper JWT validation is in place.',
+          severity: 'medium',
+          owaspCategory: 'API1:2023',
+          location: { path: filePath },
+          remediation: 'Enable RLS on all Supabase tables. Create appropriate policies for select/insert/update/delete. Never expose the service_role key to clients. Use anon key with proper RLS.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Railway / Render detection
+  {
+    id: 'APIVET051',
+    title: 'PaaS deployment detected (Railway/Render)',
+    description: 'Ensure PaaS security settings are properly configured',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isPaaS = servers.some(s => 
+        s.url.includes('.railway.app') ||
+        s.url.includes('.onrender.com') ||
+        s.url.includes('.fly.dev') ||
+        s.url.includes('.up.railway.app')
+      );
+      
+      if (isPaaS) {
+        findings.push({
+          ruleId: 'APIVET051',
+          title: 'PaaS deployment detected',
+          description: 'This API is deployed on a PaaS platform. Ensure environment variables are properly secured and consider using custom domains with proper TLS.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Secure environment variables in platform settings. Use custom domains with proper TLS certificates. Enable health checks. Configure auto-scaling policies.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Heroku detection
+  {
+    id: 'APIVET052',
+    title: 'Heroku deployment detected',
+    description: 'Ensure Heroku security features are configured',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isHeroku = servers.some(s => 
+        s.url.includes('.herokuapp.com') ||
+        s.url.includes('heroku')
+      );
+      
+      if (isHeroku) {
+        findings.push({
+          ruleId: 'APIVET052',
+          title: 'Heroku deployment detected',
+          description: 'This API is deployed on Heroku. Note that *.herokuapp.com domains share SSL certificates. Consider using custom domains for production.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Use custom domains with ACM certificates for production. Enable Heroku Private Spaces for sensitive workloads. Configure proper Config Vars security. Enable runtime metrics.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // DigitalOcean App Platform detection
+  {
+    id: 'APIVET053',
+    title: 'DigitalOcean App Platform detected',
+    description: 'Ensure DigitalOcean security features are configured',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      
+      const isDigitalOcean = servers.some(s => 
+        s.url.includes('.ondigitalocean.app') ||
+        s.url.includes('digitalocean')
+      );
+      
+      if (isDigitalOcean) {
+        findings.push({
+          ruleId: 'APIVET053',
+          title: 'DigitalOcean App Platform detected',
+          description: 'This API is deployed on DigitalOcean App Platform. Ensure proper environment variable encryption and consider using managed databases with VPC.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Use encrypted environment variables. Configure custom domains. Enable App Platform firewall rules. Use managed databases within VPC for database connections.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Akamai API Gateway detection
+  {
+    id: 'APIVET054',
+    title: 'Akamai API Gateway detected',
+    description: 'Ensure Akamai API security features are enabled',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      const specStr = JSON.stringify(spec).toLowerCase();
+      
+      const isAkamai = servers.some(s => 
+        s.url.includes('.akamaized.net') ||
+        s.url.includes('.akamaiapis.net') ||
+        s.url.includes('.akamai.com')
+      ) || specStr.includes('akamai');
+      
+      if (isAkamai) {
+        findings.push({
+          ruleId: 'APIVET054',
+          title: 'Akamai API Gateway detected',
+          description: 'This API uses Akamai. Ensure Kona Site Defender, Bot Manager, and API Gateway security features are properly configured.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Enable Kona Site Defender for WAF protection. Configure Bot Manager for bot detection. Use API Gateway for schema validation and rate limiting. Enable API Security features.'
+        });
+      }
+      
+      return findings;
+    }
+  },
+
+  // Fastly detection
+  {
+    id: 'APIVET055',
+    title: 'Fastly CDN detected',
+    description: 'Ensure Fastly security features are enabled',
+    severity: 'info',
+    owaspCategory: 'API8:2023',
+    check: (spec, filePath) => {
+      const findings: Finding[] = [];
+      const servers = spec.servers || [];
+      const specStr = JSON.stringify(spec).toLowerCase();
+      
+      const isFastly = servers.some(s => 
+        s.url.includes('.fastly.net') ||
+        s.url.includes('.global.ssl.fastly.net')
+      ) || specStr.includes('fastly');
+      
+      if (isFastly) {
+        findings.push({
+          ruleId: 'APIVET055',
+          title: 'Fastly CDN detected',
+          description: 'This API uses Fastly. Ensure Next-Gen WAF and rate limiting are properly configured.',
+          severity: 'info',
+          owaspCategory: 'API8:2023',
+          location: { path: filePath },
+          remediation: 'Enable Fastly Next-Gen WAF (Signal Sciences). Configure rate limiting with Edge Rate Limiting. Use VCL for custom security logic. Enable request logging for monitoring.'
+        });
+      }
+      
+      return findings;
+    }
   }
 ];
 

@@ -807,9 +807,155 @@ describe('ApiVet Rules', () => {
     });
   });
 
+  // ============================================
+  // Extended Cloud Provider Rules
+  // ============================================
+
+  describe('APIVET041 - GCP Cloud Run Auth', () => {
+    it('should detect Cloud Run without auth', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://my-service-abc123.run.app' }
+        ],
+        paths: { '/test': { get: { responses: { '200': { description: 'OK' } } } } }
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const cloudRunFinding = findings.find(f => f.ruleId === 'APIVET041');
+      
+      expect(cloudRunFinding).toBeDefined();
+      expect(cloudRunFinding?.severity).toBe('medium');
+    });
+  });
+
+  describe('APIVET043 - Cloudflare Workers', () => {
+    it('should detect Cloudflare Workers', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://my-api.workers.dev' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const cfFinding = findings.find(f => f.ruleId === 'APIVET043');
+      
+      expect(cfFinding).toBeDefined();
+    });
+  });
+
+  describe('APIVET044 - Vercel', () => {
+    it('should detect Vercel deployment', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://my-app.vercel.app' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const vercelFinding = findings.find(f => f.ruleId === 'APIVET044');
+      
+      expect(vercelFinding).toBeDefined();
+    });
+  });
+
+  describe('APIVET050 - Supabase', () => {
+    it('should detect Supabase API', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://abc123.supabase.co' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const supabaseFinding = findings.find(f => f.ruleId === 'APIVET050');
+      
+      expect(supabaseFinding).toBeDefined();
+      expect(supabaseFinding?.severity).toBe('medium');
+    });
+  });
+
+  describe('APIVET051 - PaaS Detection', () => {
+    it('should detect Railway deployment', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://my-app.railway.app' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const paasFinding = findings.find(f => f.ruleId === 'APIVET051');
+      
+      expect(paasFinding).toBeDefined();
+    });
+
+    it('should detect Render deployment', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://my-api.onrender.com' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const paasFinding = findings.find(f => f.ruleId === 'APIVET051');
+      
+      expect(paasFinding).toBeDefined();
+    });
+
+    it('should detect Fly.io deployment', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://my-app.fly.dev' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const paasFinding = findings.find(f => f.ruleId === 'APIVET051');
+      
+      expect(paasFinding).toBeDefined();
+    });
+  });
+
+  describe('APIVET052 - Heroku', () => {
+    it('should detect Heroku deployment', () => {
+      const spec: OpenApiSpec = {
+        openapi: '3.0.0',
+        info: { title: 'Test', version: '1.0.0' },
+        servers: [
+          { url: 'https://my-app.herokuapp.com' }
+        ],
+        paths: {}
+      };
+
+      const findings = runRules(spec, 'test.yaml');
+      const herokuFinding = findings.find(f => f.ruleId === 'APIVET052');
+      
+      expect(herokuFinding).toBeDefined();
+    });
+  });
+
   describe('Rule count', () => {
-    it('should have at least 35 rules', () => {
-      expect(rules.length).toBeGreaterThanOrEqual(35);
+    it('should have at least 55 rules', () => {
+      expect(rules.length).toBeGreaterThanOrEqual(55);
     });
   });
 });
