@@ -1,6 +1,6 @@
 {
   "name": "apivet",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "API security scanner - Static and runtime analysis for API security posture",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -44,6 +44,8 @@
   "dependencies": {
     "@aws-sdk/client-api-gateway": "^3.983.0",
     "@aws-sdk/client-apigatewayv2": "^3.983.0",
+    "@azure/arm-apimanagement": "^10.0.0",
+    "@azure/identity": "^4.13.0",
     "@google-cloud/api-gateway": "^4.2.1",
     "@google-cloud/service-usage": "^4.2.1",
     "commander": "^13.0.0",

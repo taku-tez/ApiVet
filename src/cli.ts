@@ -4,14 +4,14 @@ import { Command } from 'commander';
 import { scanCommand } from './commands/scan.js';
 import { checkCommand } from './commands/check.js';
 import { inventoryCommand } from './commands/inventory.js';
-import { cloudAwsCommand, cloudGcpCommand } from './commands/cloud.js';
+import { cloudAwsCommand, cloudGcpCommand, cloudAzureCommand } from './commands/cloud.js';
 
 const program = new Command();
 
 program
   .name('apivet')
   .description('API Security Scanner - Static and runtime analysis for API security posture')
-  .version('0.6.0');
+  .version('0.7.0');
 
 program
   .command('scan <path>')
@@ -77,5 +77,19 @@ cloudCmd
   .option('--only-rules <ids>', 'Only run specific rules (comma-separated rule IDs)')
   .option('--exclude-rules <ids>', 'Exclude specific rules (comma-separated rule IDs)')
   .action(cloudGcpCommand);
+
+cloudCmd
+  .command('azure')
+  .description('Scan Azure API Management')
+  .option('--subscription-id <id>', 'Azure subscription ID (default: AZURE_SUBSCRIPTION_ID env)')
+  .option('-g, --resource-group <name>', 'Resource group name (optional, scans all if not specified)')
+  .option('-n, --service-name <name>', 'APIM service name (optional)')
+  .option('--api-id <id>', 'Scan specific API by ID')
+  .option('-j, --json', 'Output as JSON')
+  .option('-o, --output <file>', 'Write results to file')
+  .option('-s, --severity <level>', 'Filter by severity (critical, high, medium, low, info)')
+  .option('--only-rules <ids>', 'Only run specific rules (comma-separated rule IDs)')
+  .option('--exclude-rules <ids>', 'Exclude specific rules (comma-separated rule IDs)')
+  .action(cloudAzureCommand);
 
 program.parse();
