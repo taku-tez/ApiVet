@@ -5,6 +5,8 @@ import { scanCommand } from './commands/scan.js';
 import { checkCommand } from './commands/check.js';
 import { inventoryCommand } from './commands/inventory.js';
 import { cloudAwsCommand, cloudGcpCommand, cloudAzureCommand } from './commands/cloud.js';
+import { graphqlCommand } from './commands/graphql.js';
+import { bolaCommand } from './commands/bola.js';
 
 const program = new Command();
 
@@ -98,5 +100,34 @@ cloudCmd
   .option('--only-rules <ids>', 'Only run specific rules (comma-separated rule IDs)')
   .option('--exclude-rules <ids>', 'Exclude specific rules (comma-separated rule IDs)')
   .action(cloudAzureCommand);
+
+program
+  .command('bola')
+  .description('BOLA/IDOR (Broken Object Level Authorization) vulnerability scanner')
+  .requiredOption('--spec <path>', 'Path to OpenAPI/Swagger specification file')
+  .requiredOption('--base-url <url>', 'Base URL of the target API')
+  .requiredOption('--token-a <token>', 'Auth token for User A (resource owner)')
+  .requiredOption('--token-b <token>', 'Auth token for User B (attacker)')
+  .option('--admin-token <token>', 'Admin token for vertical escalation tests')
+  .option('--auth-header <name>', 'Auth header name (default: Authorization)')
+  .option('--auth-scheme <scheme>', 'Auth scheme (default: Bearer)')
+  .option('--timeout <ms>', 'Request timeout in milliseconds (default: 10000)')
+  .option('-j, --json', 'Output as JSON')
+  .option('-o, --output <file>', 'Write results to file')
+  .option('--dry-run', 'Generate test cases without sending requests')
+  .option('--verbose', 'Verbose output')
+  .action(bolaCommand);
+
+program
+  .command('graphql')
+  .description('Scan a live GraphQL endpoint for security issues')
+  .requiredOption('-e, --endpoint <url>', 'GraphQL endpoint URL')
+  .option('--timeout <ms>', 'Request timeout in milliseconds (default: 10000)')
+  .option('--auth <token>', 'Bearer authentication token')
+  .option('-H, --header <header>', 'Custom request header (format: Name:Value, repeatable)', collect, [])
+  .option('--skip <checks>', 'Skip specific checks (comma-separated: introspection,depth-limit,batch-limit,field-suggestions,cost-analysis,auth-bypass,injection)')
+  .option('-j, --json', 'Output as JSON')
+  .option('-o, --output <file>', 'Write results to file')
+  .action(graphqlCommand);
 
 program.parse();
