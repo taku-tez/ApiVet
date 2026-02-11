@@ -1,7 +1,9 @@
 # ApiVet 🩺
 
-API Security Scanner - Static and runtime analysis for API security posture.
+[![npm version](https://img.shields.io/npm/v/apivet)](https://www.npmjs.com/package/apivet)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+API Security Scanner - Static and runtime analysis for API security posture.
 **89 rules | 7 frameworks | SARIF output**
 
 ## Features
@@ -360,6 +362,10 @@ apivet scan api.yaml --exclude-rules APIVET026,APIVET027,APIVET028,APIVET029
 - `0` - No issues found
 - `1` - Issues found
 - `2` - Error during scan (invalid input, network error, etc.)
+
+## Part of xxVet Series
+
+xxVet is a collection of 15 focused security CLI tools. See [full catalog](https://www.notion.so/xxVet-CLI-304b1e6bcbc2817abe62d4aecee9914a).
 
 ## License
 
